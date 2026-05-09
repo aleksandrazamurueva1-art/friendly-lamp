@@ -116,7 +116,7 @@ def extract_business_line(labels):
 @st.cache_data(ttl=300)
 def load_data() -> pd.DataFrame:
     try:
-        df = pd.read_excel(SHEET_URL)
+        df = pd.read_excel(SHEET_URL, header=3)
     except Exception as e:
         st.error(f"Не удалось загрузить данные из Google Sheets: {e}")
         return pd.DataFrame()
