@@ -35,7 +35,6 @@ CLASSIFICATION_MAP = {
 }
 
 CLOSED_STATUSES = ["Закрыт", "В релизе"]
-
 DATE_CREATED_COL = "Дата создания"
 DATE_RESOLUTION_COL = "Дата резолюции"
 DUE_DATE_COL = "Срок исполнения"
@@ -57,14 +56,8 @@ st.markdown(
         border-radius: 16px;
         box-shadow: 0 4px 16px rgba(0,0,0,0.18);
     }
-    div[data-testid="stMetricLabel"] {
-        font-size: 15px;
-        color: #9da7b3;
-    }
-    div[data-testid="stMetricValue"] {
-        font-size: 30px;
-        font-weight: 800;
-    }
+    div[data-testid="stMetricLabel"] { font-size: 15px; color: #9da7b3; }
+    div[data-testid="stMetricValue"] { font-size: 30px; font-weight: 800; }
     .insight-box {
         background: linear-gradient(135deg, #161b22 0%, #1f2937 100%);
         border: 1px solid #30363d;
@@ -72,21 +65,18 @@ st.markdown(
         padding: 20px 24px;
         margin: 12px 0 24px 0;
     }
-    .insight-title {
-        font-size: 20px;
-        font-weight: 800;
-        margin-bottom: 10px;
+    .insight-title { font-size: 20px; font-weight: 800; margin-bottom: 10px; }
+    .insight-item { font-size: 16px; margin: 7px 0; color: #d1d5db; }
+    .section-title { font-size: 24px; font-weight: 800; margin: 28px 0 8px 0; border-top: 1px solid #30363d; padding-top: 20px; }
+    .week-box {
+        background: linear-gradient(135deg, #0d1117 0%, #161b22 100%);
+        border: 1px solid #238636;
+        border-radius: 18px;
+        padding: 20px 24px;
+        margin: 12px 0 24px 0;
     }
-    .insight-item {
-        font-size: 16px;
-        margin: 7px 0;
-        color: #d1d5db;
-    }
-    .section-title {
-        font-size: 24px;
-        font-weight: 800;
-        margin: 20px 0 8px 0;
-    }
+    .week-title { font-size: 18px; font-weight: 800; margin-bottom: 12px; color: #3fb950; }
+    .week-item { font-size: 15px; margin: 5px 0; color: #d1d5db; }
     </style>
     """,
     unsafe_allow_html=True
@@ -106,11 +96,19 @@ def extract_classification(labels):
 
 def extract_business_line(labels):
     text = str(labels).lower()
-    if "кб" in text:
+    has_kb = "кб" in text
+    has_rb = "рб" in text
+    if has_kb and has_rb:
+        return "Общее"
+    if has_kb:
         return "КБ"
-    if "рб" in text:
+    if has_rb:
         return "РБ"
     return "Не указано"
+
+
+def extract_justai(labels):
+    return "justai" in str(labels).lower()
 
 
 @st.cache_data(ttl=300)
@@ -128,6 +126,7 @@ def load_data() -> pd.DataFrame:
 
     df["Бизнес-линия"] = df["Метки"].apply(extract_business_line)
     df["Классификация"] = df["Метки"].apply(extract_classification)
+    df["JustAI"] = df["Метки"].apply(extract_justai)
 
     for col in [DATE_CREATED_COL, "Обновлен", DATE_RESOLUTION_COL, DUE_DATE_COL]:
         if col in df.columns:
@@ -151,6 +150,42 @@ def load_data() -> pd.DataFrame:
     return df
 
 
+def bar_with_pct(data, x, y, title, orientation="v", height=390):
+    """Строит bar chart с подписями 'N (X%)' от общей суммы."""
+    total = data[y].sum() if orientation == "v" else data[x].sum()
+    if total == 0:
+        return None
+    if orientation == "v":
+        data = data.copy()
+        data["label"] = data[y].apply(lambda v: f"{v}<br>({v/total*100:.1f}%)")
+        fig = px.bar(data, x=x, y=y, text="label")
+        fig.update_traces(textposition="outside")
+    else:
+        data = data.copy()
+        data["label"] = data[x].apply(lambda v: f"{v} ({v/total*100:.1f}%)")
+        fig = px.bar(data, x=x, y=y, orientation="h", text="label")
+        fig.update_traces(textposition="outside")
+    fig.update_layout(
+        height=height,
+        margin=dict(l=10, r=60, t=30, b=10),
+        xaxis_title=None,
+        yaxis_title=None,
+        showlegend=False,
+        uniformtext_minsize=9,
+    )
+    return fig
+
+
+def get_week_bounds(today):
+    """Возвращает границы прошлой (пн-вс) и текущей (пн-сегодня) недели."""
+    weekday = today.weekday()  # 0=пн
+    current_week_start = today - timedelta(days=weekday)
+    prev_week_start = current_week_start - timedelta(days=7)
+    prev_week_end = current_week_start - timedelta(days=1)
+    return prev_week_start, prev_week_end, current_week_start, today
+
+
+# ── Заголовок ──────────────────────────────────────────────────────────────
 st.title("🐞 Панель управления ошибками")
 st.caption("Активный backlog: учитываются только дефекты не в статусах «Закрыт» и «В релизе».")
 
@@ -166,10 +201,11 @@ if df.empty:
 st.sidebar.header("Фильтры")
 
 
-def multiselect_filter(label, column):
-    if column not in df.columns:
+def multiselect_filter(label, column, source=None):
+    src = source if source is not None else df
+    if column not in src.columns:
         return []
-    values = sorted([v for v in df[column].dropna().unique() if str(v) != "nan"])
+    values = sorted([v for v in src[column].dropna().unique() if str(v) != "nan"])
     return st.sidebar.multiselect(label, values)
 
 
@@ -213,51 +249,53 @@ if DATE_CREATED_COL in filtered.columns and filtered[DATE_CREATED_COL].notna().a
         ]
 
 today = pd.Timestamp.today().normalize()
-week_ago = today - timedelta(days=7)
+prev_w_start, prev_w_end, cur_w_start, cur_w_end = get_week_bounds(today)
 
 critical_df = filtered[
-    filtered["Приоритет"]
-    .astype(str)
+    filtered["Приоритет"].astype(str)
     .str.contains("Блокирующий|Критичный|Critical|Blocker", case=False, na=False)
 ]
 
-new_week = (
-    filtered[filtered[DATE_CREATED_COL] >= week_ago]
-    if DATE_CREATED_COL in filtered.columns
-    else filtered.iloc[0:0]
+new_cur_week = (
+    filtered[
+        (filtered[DATE_CREATED_COL] >= cur_w_start)
+        & (filtered[DATE_CREATED_COL] <= cur_w_end)
+    ]
+    if DATE_CREATED_COL in filtered.columns else filtered.iloc[0:0]
 )
 
-closed_week = (
+closed_cur_week = (
     df[
-        (df[DATE_RESOLUTION_COL] >= week_ago)
+        (df[DATE_RESOLUTION_COL] >= cur_w_start)
+        & (df[DATE_RESOLUTION_COL] <= cur_w_end)
         & (df["Статус"].astype(str).isin(CLOSED_STATUSES))
     ]
-    if DATE_RESOLUTION_COL in df.columns
-    else df.iloc[0:0]
+    if DATE_RESOLUTION_COL in df.columns else df.iloc[0:0]
 )
 
 avg_age = filtered["Возраст бага, дней"].mean()
 overdue_count = int(filtered["Просрочен"].sum()) if "Просрочен" in filtered.columns else 0
-no_bl_count = len(filtered[filtered["Бизнес-линия"] == "Не указано"])
-no_bl_share = (no_bl_count / len(filtered) * 100) if len(filtered) else 0
 
 top_priority = (
     filtered["Приоритет"].value_counts().idxmax()
-    if "Приоритет" in filtered.columns and not filtered.empty
-    else "—"
+    if "Приоритет" in filtered.columns and not filtered.empty else "—"
 )
 top_category = (
     filtered["Классификация"].value_counts().idxmax()
-    if "Классификация" in filtered.columns and not filtered.empty
-    else "—"
+    if "Классификация" in filtered.columns and not filtered.empty else "—"
 )
+no_bl_count = len(filtered[filtered["Бизнес-линия"] == "Не указано"])
+no_bl_share = (no_bl_count / len(filtered) * 100) if len(filtered) else 0
+justai_count = int(filtered["JustAI"].sum())
+justai_share = (justai_count / len(filtered) * 100) if len(filtered) else 0
 
+# ── KPI ────────────────────────────────────────────────────────────────────
 k1, k2, k3, k4, k5, k6 = st.columns(6)
 k1.metric("Открытые баги", len(filtered))
 k2.metric("Critical / Blocker", len(critical_df))
 k3.metric("Просроченные", overdue_count)
-k4.metric("Новые за неделю", len(new_week))
-k5.metric("Закрытые за неделю", len(closed_week))
+k4.metric("JustAI (вендор)", f"{justai_count} ({justai_share:.0f}%)")
+k5.metric("Новые (тек. неделя)", len(new_cur_week))
 k6.metric("Средний возраст", f"{avg_age:.0f} дн." if pd.notna(avg_age) else "—")
 
 st.markdown(
@@ -267,32 +305,90 @@ st.markdown(
         <div class="insight-item">• Основной приоритет в активном backlog: <b>{top_priority}</b></div>
         <div class="insight-item">• Самая частая категория дефектов: <b>{top_category}</b></div>
         <div class="insight-item">• Дефекты без бизнес-линии: <b>{no_bl_count}</b> ({no_bl_share:.1f}%)</div>
+        <div class="insight-item">• Баги на стороне вендора (JustAI): <b>{justai_count}</b> ({justai_share:.1f}%)</div>
     </div>
     """,
     unsafe_allow_html=True
 )
 
-st.markdown('<div class="section-title">Динамика качества</div>', unsafe_allow_html=True)
+# ── ИТОГИ НЕДЕЛЬ ───────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">📅 Итоги недель</div>', unsafe_allow_html=True)
+
+tab_prev, tab_cur = st.tabs([
+    f"Прошлая неделя ({prev_w_start.strftime('%d.%m')} – {prev_w_end.strftime('%d.%m')})",
+    f"Текущая неделя ({cur_w_start.strftime('%d.%m')} – {today.strftime('%d.%m')})",
+])
+
+for tab, w_start, w_end, label in [
+    (tab_prev, prev_w_start, prev_w_end, "прошлой"),
+    (tab_cur, cur_w_start, cur_w_end, "текущей"),
+]:
+    with tab:
+        w_new = (
+            df[
+                (df[DATE_CREATED_COL] >= w_start)
+                & (df[DATE_CREATED_COL] <= w_end + timedelta(days=1))
+            ]
+            if DATE_CREATED_COL in df.columns else df.iloc[0:0]
+        )
+        w_closed = (
+            df[
+                (df[DATE_RESOLUTION_COL] >= w_start)
+                & (df[DATE_RESOLUTION_COL] <= w_end + timedelta(days=1))
+                & (df["Статус"].astype(str).isin(CLOSED_STATUSES))
+            ]
+            if DATE_RESOLUTION_COL in df.columns else df.iloc[0:0]
+        )
+
+        wk1, wk2 = st.columns(2)
+        wk1.metric("Открыто за неделю", len(w_new))
+        wk2.metric("Закрыто за неделю", len(w_closed))
+
+        if not w_new.empty:
+            wc1, wc2, wc3 = st.columns(3)
+
+            with wc1:
+                st.subheader("По категориям")
+                wcat = (
+                    w_new.groupby("Классификация").size()
+                    .reset_index(name="Количество")
+                    .sort_values("Количество", ascending=True)
+                )
+                fig = bar_with_pct(wcat, "Количество", "Классификация", "", orientation="h", height=350)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+
+            with wc2:
+                st.subheader("По приоритетам")
+                wpri = (
+                    w_new.groupby("Приоритет").size()
+                    .reset_index(name="Количество")
+                    .sort_values("Количество", ascending=False)
+                )
+                fig = bar_with_pct(wpri, "Приоритет", "Количество", "", height=350)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+
+            with wc3:
+                st.subheader("По бизнес-линиям")
+                wbl = (
+                    w_new.groupby("Бизнес-линия").size()
+                    .reset_index(name="Количество")
+                    .sort_values("Количество", ascending=False)
+                )
+                fig = bar_with_pct(wbl, "Бизнес-линия", "Количество", "", height=350)
+                if fig:
+                    st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info(f"Нет новых багов за {label} неделю.")
+
+# ── ДИНАМИКА ───────────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">📈 Динамика качества</div>', unsafe_allow_html=True)
 
 col1, col2 = st.columns(2)
 
 with col1:
-    st.subheader("Динамика активного backlog")
-    if DATE_CREATED_COL in filtered.columns and filtered[DATE_CREATED_COL].notna().any():
-        backlog = (
-            filtered.dropna(subset=[DATE_CREATED_COL])
-            .assign(week=lambda x: x[DATE_CREATED_COL].dt.to_period("W").dt.start_time)
-            .groupby("week").size()
-            .reset_index(name="Количество открытых багов")
-        )
-        fig = px.line(backlog, x="week", y="Количество открытых багов", markers=True)
-        fig.update_layout(height=390, margin=dict(l=10, r=10, t=20, b=10), xaxis_title=None, yaxis_title="Открытые баги", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
-    else:
-        st.info("Нет данных по дате создания.")
-
-with col2:
-    st.subheader("Тренд новых дефектов")
+    st.subheader("Тренд новых дефектов (по неделям)")
     if DATE_CREATED_COL in filtered.columns and filtered[DATE_CREATED_COL].notna().any():
         new_trend = (
             filtered.dropna(subset=[DATE_CREATED_COL])
@@ -300,13 +396,40 @@ with col2:
             .groupby("week").size()
             .reset_index(name="Новые баги")
         )
-        fig = px.bar(new_trend, x="week", y="Новые баги")
-        fig.update_layout(height=390, margin=dict(l=10, r=10, t=20, b=10), xaxis_title=None, yaxis_title="Новые баги", showlegend=False)
+        total = new_trend["Новые баги"].sum()
+        new_trend["label"] = new_trend["Новые баги"].apply(
+            lambda v: f"{v}<br>({v/total*100:.1f}%)" if total else str(v)
+        )
+        fig = px.bar(new_trend, x="week", y="Новые баги", text="label")
+        fig.update_traces(textposition="outside")
+        fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, yaxis_title="Новые баги", showlegend=False)
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Нет данных по дате создания.")
 
-st.markdown('<div class="section-title">Структура активного backlog</div>', unsafe_allow_html=True)
+with col2:
+    st.subheader("Тренд закрытия дефектов (по неделям)")
+    if DATE_RESOLUTION_COL in df.columns and df[DATE_RESOLUTION_COL].notna().any():
+        closed_trend = (
+            df[df["Статус"].astype(str).isin(CLOSED_STATUSES)]
+            .dropna(subset=[DATE_RESOLUTION_COL])
+            .assign(week=lambda x: x[DATE_RESOLUTION_COL].dt.to_period("W").dt.start_time)
+            .groupby("week").size()
+            .reset_index(name="Закрытые баги")
+        )
+        total = closed_trend["Закрытые баги"].sum()
+        closed_trend["label"] = closed_trend["Закрытые баги"].apply(
+            lambda v: f"{v}<br>({v/total*100:.1f}%)" if total else str(v)
+        )
+        fig = px.bar(closed_trend, x="week", y="Закрытые баги", text="label", color_discrete_sequence=["#238636"])
+        fig.update_traces(textposition="outside")
+        fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, yaxis_title="Закрытые баги", showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    else:
+        st.info("Нет данных по дате резолюции.")
+
+# ── СТРУКТУРА BACKLOG ───────────────────────────────────────────────────────
+st.markdown('<div class="section-title">🗂 Структура активного backlog</div>', unsafe_allow_html=True)
 
 col3, col4 = st.columns(2)
 
@@ -317,10 +440,9 @@ with col3:
         .reset_index(name="Количество")
         .sort_values("Количество", ascending=False)
     )
-    fig = px.bar(priority, x="Приоритет", y="Количество", text="Количество")
-    fig.update_traces(textposition="outside")
-    fig.update_layout(height=390, margin=dict(l=10, r=10, t=20, b=10), xaxis_title=None, yaxis_title="Количество", showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+    fig = bar_with_pct(priority, "Приоритет", "Количество", "")
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
 
 with col4:
     st.subheader("Баги по бизнес-линиям")
@@ -329,10 +451,9 @@ with col4:
         .reset_index(name="Количество")
         .sort_values("Количество", ascending=False)
     )
-    fig = px.bar(business, x="Бизнес-линия", y="Количество", text="Количество")
-    fig.update_traces(textposition="outside")
-    fig.update_layout(height=390, margin=dict(l=10, r=10, t=20, b=10), xaxis_title=None, yaxis_title="Количество", showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+    fig = bar_with_pct(business, "Бизнес-линия", "Количество", "")
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
 
 col5, col6 = st.columns(2)
 
@@ -342,12 +463,11 @@ with col5:
         filtered.groupby("Классификация").size()
         .reset_index(name="Количество")
         .sort_values("Количество", ascending=True)
-        .tail(10)
+        .tail(12)
     )
-    fig = px.bar(classification, x="Количество", y="Классификация", orientation="h", text="Количество")
-    fig.update_traces(textposition="outside")
-    fig.update_layout(height=470, margin=dict(l=10, r=40, t=20, b=10), xaxis_title="Количество", yaxis_title=None, showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+    fig = bar_with_pct(classification, "Количество", "Классификация", "", orientation="h", height=470)
+    if fig:
+        st.plotly_chart(fig, use_container_width=True)
 
 with col6:
     st.subheader("Классификация × Бизнес-линия")
@@ -357,33 +477,90 @@ with col6:
     )
     if not matrix.empty:
         fig = px.density_heatmap(matrix, x="Бизнес-линия", y="Классификация", z="Количество", text_auto=True)
-        fig.update_layout(height=470, margin=dict(l=10, r=10, t=20, b=10), xaxis_title=None, yaxis_title=None)
+        fig.update_layout(height=470, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, yaxis_title=None)
         st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Нет данных для матрицы.")
 
-st.markdown('<div class="section-title">Пропускная способность</div>', unsafe_allow_html=True)
+# ── JUSTAI ──────────────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">🤖 Баги на стороне вендора (JustAI)</div>', unsafe_allow_html=True)
 
-if DATE_RESOLUTION_COL in df.columns and df[DATE_RESOLUTION_COL].notna().any():
-    throughput = (
-        df[df["Статус"].astype(str).isin(CLOSED_STATUSES)]
-        .dropna(subset=[DATE_RESOLUTION_COL])
-        .assign(week=lambda x: x[DATE_RESOLUTION_COL].dt.to_period("W").dt.start_time)
-        .groupby("week").size()
-        .reset_index(name="Закрытые баги")
-    )
-    fig = px.bar(throughput, x="week", y="Закрытые баги", text="Закрытые баги")
-    fig.update_traces(textposition="outside")
-    fig.update_layout(height=390, margin=dict(l=10, r=10, t=20, b=10), xaxis_title=None, yaxis_title="Закрытые баги", showlegend=False)
-    st.plotly_chart(fig, use_container_width=True)
+justai_df = filtered[filtered["JustAI"] == True]
+
+if justai_df.empty:
+    st.info("Нет активных багов с меткой JustAI.")
 else:
-    st.info("Нет данных по дате резолюции.")
+    jc1, jc2 = st.columns(2)
+    jc3, jc4 = st.columns(2)
 
+    with jc1:
+        st.subheader("По бизнес-линиям")
+        jbl = (
+            justai_df.groupby("Бизнес-линия").size()
+            .reset_index(name="Количество")
+            .sort_values("Количество", ascending=False)
+        )
+        fig = bar_with_pct(jbl, "Бизнес-линия", "Количество", "")
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+
+    with jc2:
+        st.subheader("По категориям")
+        jcat = (
+            justai_df.groupby("Классификация").size()
+            .reset_index(name="Количество")
+            .sort_values("Количество", ascending=True)
+        )
+        fig = bar_with_pct(jcat, "Количество", "Классификация", "", orientation="h", height=390)
+        if fig:
+            st.plotly_chart(fig, use_container_width=True)
+
+    with jc3:
+        st.subheader("Динамика открытия (JustAI)")
+        if DATE_CREATED_COL in justai_df.columns and justai_df[DATE_CREATED_COL].notna().any():
+            jopen = (
+                justai_df.dropna(subset=[DATE_CREATED_COL])
+                .assign(week=lambda x: x[DATE_CREATED_COL].dt.to_period("W").dt.start_time)
+                .groupby("week").size()
+                .reset_index(name="Новые баги JustAI")
+            )
+            total = jopen["Новые баги JustAI"].sum()
+            jopen["label"] = jopen["Новые баги JustAI"].apply(
+                lambda v: f"{v}<br>({v/total*100:.1f}%)" if total else str(v)
+            )
+            fig = px.bar(jopen, x="week", y="Новые баги JustAI", text="label", color_discrete_sequence=["#f85149"])
+            fig.update_traces(textposition="outside")
+            fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+
+    with jc4:
+        st.subheader("Динамика закрытия (JustAI)")
+        justai_all = df[df["JustAI"] == True]
+        if DATE_RESOLUTION_COL in justai_all.columns and justai_all[DATE_RESOLUTION_COL].notna().any():
+            jclosed = (
+                justai_all[justai_all["Статус"].astype(str).isin(CLOSED_STATUSES)]
+                .dropna(subset=[DATE_RESOLUTION_COL])
+                .assign(week=lambda x: x[DATE_RESOLUTION_COL].dt.to_period("W").dt.start_time)
+                .groupby("week").size()
+                .reset_index(name="Закрытые баги JustAI")
+            )
+            total = jclosed["Закрытые баги JustAI"].sum()
+            jclosed["label"] = jclosed["Закрытые баги JustAI"].apply(
+                lambda v: f"{v}<br>({v/total*100:.1f}%)" if total else str(v)
+            )
+            fig = px.bar(jclosed, x="week", y="Закрытые баги JustAI", text="label", color_discrete_sequence=["#238636"])
+            fig.update_traces(textposition="outside")
+            fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Нет закрытых багов JustAI.")
+
+# ── ДЕТАЛИЗАЦИЯ ─────────────────────────────────────────────────────────────
 with st.expander("Детализация дефектов"):
     show_cols = [
         "Код", "Тема", "Статус", "Приоритет", "Исполнитель",
         DATE_CREATED_COL, DATE_RESOLUTION_COL, "Возраст бага, дней",
-        "Бизнес-линия", "Классификация", VERSION_COL, "Метки",
+        "Бизнес-линия", "Классификация", "JustAI", VERSION_COL, "Метки",
     ]
     show_cols = [c for c in show_cols if c in filtered.columns]
     st.dataframe(filtered[show_cols], use_container_width=True, hide_index=True)
