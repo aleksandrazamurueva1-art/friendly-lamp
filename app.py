@@ -98,7 +98,8 @@ def extract_business_line(labels):
     text = str(labels).lower()
     has_kb = "кб" in text
     has_rb = "рб" in text
-    if has_kb and has_rb:
+    has_obshee = "общее" in text
+    if has_obshee or (has_kb and has_rb):
         return "Общее"
     if has_kb:
         return "КБ"
