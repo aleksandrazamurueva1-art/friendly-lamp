@@ -556,6 +556,129 @@ else:
         else:
             st.info("Нет закрытых багов JustAI.")
 
+# ── ВЛИЯНИЕ НА ПОЛЬЗОВАТЕЛЕЙ ────────────────────────────────────────────────
+APPEALS_COL = "количество обращений"
+
+st.markdown('<div class="section-title">🔥 Влияние дефектов на пользователей</div>', unsafe_allow_html=True)
+
+if APPEALS_COL not in filtered.columns:
+    st.info(f"Колонка «{APPEALS_COL}» не найдена в данных.")
+else:
+    impact_df = filtered[filtered[APPEALS_COL].notna() & (filtered[APPEALS_COL] > 0)].copy()
+    impact_df[APPEALS_COL] = pd.to_numeric(impact_df[APPEALS_COL], errors="coerce").fillna(0).astype(int)
+    impact_df = impact_df[impact_df[APPEALS_COL] > 0]
+
+    if impact_df.empty:
+        st.info("Нет дефектов с заполненным полем обращений.")
+    else:
+        total_appeals = int(impact_df[APPEALS_COL].sum())
+        bugs_with_appeals = len(impact_df)
+        avg_appeals = total_appeals / bugs_with_appeals if bugs_with_appeals else 0
+        top_cat_appeals = (
+            impact_df.groupby("Классификация")[APPEALS_COL].sum().idxmax()
+            if not impact_df.empty else "—"
+        )
+
+        im1, im2, im3, im4 = st.columns(4)
+        im1.metric("Всего обращений", total_appeals)
+        im2.metric("Багов с обращениями", bugs_with_appeals)
+        im3.metric("Топ категория", top_cat_appeals)
+        im4.metric("Среднее на баг", f"{avg_appeals:.1f}")
+
+        ic1, ic2 = st.columns(2)
+
+        with ic1:
+            st.subheader("Влияние по категориям и приоритету")
+            priority_order = ["Блокирующий", "Критичный", "Средний", "Низкий"]
+            bubble_data = []
+            for _, row in impact_df.iterrows():
+                bubble_data.append({
+                    "Классификация": row.get("Классификация", "Не указано"),
+                    "Приоритет": row.get("Приоритет", "Не указано"),
+                    "Бизнес-линия": row.get("Бизнес-линия", "Не указано"),
+                    APPEALS_COL: row[APPEALS_COL],
+                    "Код": row.get("Код", ""),
+                })
+            bubble_df = pd.DataFrame(bubble_data)
+
+            bl_color_map = {"КБ": "#378ADD", "РБ": "#1D9E75", "Общее": "#EF9F27", "Не указано": "#888780"}
+
+            fig = px.scatter(
+                bubble_df,
+                x="Классификация",
+                y="Приоритет",
+                size=APPEALS_COL,
+                color="Бизнес-линия",
+                color_discrete_map=bl_color_map,
+                size_max=50,
+                hover_data={"Код": True, APPEALS_COL: True},
+                category_orders={"Приоритет": priority_order},
+            )
+            fig.update_layout(
+                height=420,
+                margin=dict(l=10, r=10, t=30, b=100),
+                xaxis_title=None,
+                yaxis_title=None,
+                legend_title="Бизнес-линия",
+                xaxis=dict(tickangle=-35),
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        with ic2:
+            st.subheader("Обращения по категориям")
+            cat_appeals = (
+                impact_df.groupby("Классификация")[APPEALS_COL].sum()
+                .reset_index()
+                .sort_values(APPEALS_COL, ascending=True)
+            )
+            total_cat = cat_appeals[APPEALS_COL].sum()
+            cat_appeals["label"] = cat_appeals[APPEALS_COL].apply(
+                lambda v: f"{v} ({v/total_cat*100:.1f}%)" if total_cat else str(v)
+            )
+            fig = px.bar(
+                cat_appeals,
+                x=APPEALS_COL,
+                y="Классификация",
+                orientation="h",
+                text="label",
+                color_discrete_sequence=["#378ADD"],
+            )
+            fig.update_traces(textposition="outside")
+            fig.update_layout(
+                height=420,
+                margin=dict(l=10, r=120, t=30, b=10),
+                xaxis_title="Обращений",
+                yaxis_title=None,
+                showlegend=False,
+            )
+            st.plotly_chart(fig, use_container_width=True)
+
+        st.subheader("Топ дефектов по количеству обращений")
+        top_bugs = impact_df.sort_values(APPEALS_COL, ascending=False).head(20)
+        show_impact_cols = ["Код", "Тема", "Приоритет", APPEALS_COL, "Классификация", "Бизнес-линия", "Возраст бага, дней"]
+        show_impact_cols = [c for c in show_impact_cols if c in top_bugs.columns]
+
+        def highlight_priority(row):
+            colors = {
+                "Блокирующий": "background-color: #FCEBEB",
+                "Критичный": "background-color: #FAEEDA",
+                "Средний": "",
+                "Низкий": "",
+            }
+            p = row.get("Приоритет", "")
+            style = colors.get(str(p), "")
+            return [style] * len(row)
+
+        st.dataframe(
+            top_bugs[show_impact_cols].reset_index(drop=True),
+            use_container_width=True,
+            hide_index=True,
+            column_config={
+                APPEALS_COL: st.column_config.NumberColumn("Обращений", format="%d"),
+                "Возраст бага, дней": st.column_config.NumberColumn("Возраст, дн.", format="%d"),
+            },
+        )
+
 # ── ДЕТАЛИЗАЦИЯ ─────────────────────────────────────────────────────────────
 with st.expander("Детализация дефектов"):
     show_cols = [
