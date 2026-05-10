@@ -588,36 +588,34 @@ else:
         ic1, ic2 = st.columns(2)
 
         with ic1:
-            st.subheader("Обращения: категория × приоритет")
-            priority_order = ["Блокирующий", "Критичный", "Средний", "Низкий", "Незначительный"]
-            heat_data = (
-                impact_df.groupby(["Классификация", "Приоритет"])[APPEALS_COL].sum()
+            st.subheader("Обращения по бизнес-линиям")
+            bl_appeals = (
+                impact_df.groupby("Бизнес-линия")[APPEALS_COL].sum()
                 .reset_index()
+                .sort_values(APPEALS_COL, ascending=True)
             )
-            # Строим полную матрицу чтобы все ячейки были заполнены
-            all_cats = sorted(heat_data["Классификация"].unique())
-            all_pris = [p for p in priority_order if p in heat_data["Приоритет"].unique()]
-            heat_pivot = (
-                heat_data.pivot(index="Приоритет", columns="Классификация", values=APPEALS_COL)
-                .reindex(index=all_pris, columns=all_cats)
-                .fillna(0)
+            total_bl = bl_appeals[APPEALS_COL].sum()
+            bl_appeals["label"] = bl_appeals[APPEALS_COL].apply(
+                lambda v: f"{v} ({v/total_bl*100:.1f}%)" if total_bl else str(v)
             )
-            fig = px.imshow(
-                heat_pivot,
-                color_continuous_scale="YlOrRd",
-                text_auto=True,
-                aspect="auto",
-                labels=dict(color="Обращений"),
+            bl_color_map = {"КБ": "#378ADD", "РБ": "#1D9E75", "Общее": "#EF9F27", "Не указано": "#888780"}
+            fig = px.bar(
+                bl_appeals,
+                x=APPEALS_COL,
+                y="Бизнес-линия",
+                orientation="h",
+                text="label",
+                color="Бизнес-линия",
+                color_discrete_map=bl_color_map,
             )
+            fig.update_traces(textposition="outside")
             fig.update_layout(
                 height=420,
-                margin=dict(l=10, r=10, t=30, b=100),
-                xaxis_title=None,
+                margin=dict(l=10, r=120, t=30, b=10),
+                xaxis_title="Обращений",
                 yaxis_title=None,
-                xaxis=dict(tickangle=-35),
-                coloraxis_showscale=False,
+                showlegend=False,
             )
-            fig.update_traces(textfont_size=13)
             st.plotly_chart(fig, use_container_width=True)
 
         with ic2:
@@ -651,27 +649,18 @@ else:
 
         st.subheader("Топ дефектов по количеству обращений")
         top_bugs = impact_df.sort_values(APPEALS_COL, ascending=False).head(20)
-        show_impact_cols = ["Код", "Тема", "Приоритет", APPEALS_COL, "Классификация", "Бизнес-линия", "Возраст бага, дней"]
+        show_impact_cols = ["Тема", APPEALS_COL, "Приоритет", "Классификация", "Бизнес-линия"]
         show_impact_cols = [c for c in show_impact_cols if c in top_bugs.columns]
-
-        def highlight_priority(row):
-            colors = {
-                "Блокирующий": "background-color: #FCEBEB",
-                "Критичный": "background-color: #FAEEDA",
-                "Средний": "",
-                "Низкий": "",
-            }
-            p = row.get("Приоритет", "")
-            style = colors.get(str(p), "")
-            return [style] * len(row)
-
         st.dataframe(
             top_bugs[show_impact_cols].reset_index(drop=True),
             use_container_width=True,
             hide_index=True,
             column_config={
-                APPEALS_COL: st.column_config.NumberColumn("Обращений", format="%d"),
-                "Возраст бага, дней": st.column_config.NumberColumn("Возраст, дн.", format="%d"),
+                "Тема": st.column_config.TextColumn("Название бага", width="large"),
+                APPEALS_COL: st.column_config.NumberColumn("Кол-во обращений", format="%d"),
+                "Приоритет": st.column_config.TextColumn("Приоритет"),
+                "Классификация": st.column_config.TextColumn("Категория"),
+                "Бизнес-линия": st.column_config.TextColumn("Бизнес-линия"),
             },
         )
 
