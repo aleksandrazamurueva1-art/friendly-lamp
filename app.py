@@ -588,40 +588,36 @@ else:
         ic1, ic2 = st.columns(2)
 
         with ic1:
-            st.subheader("Влияние по категориям и приоритету")
-            priority_order = ["Блокирующий", "Критичный", "Средний", "Низкий"]
-            bubble_data = []
-            for _, row in impact_df.iterrows():
-                bubble_data.append({
-                    "Классификация": row.get("Классификация", "Не указано"),
-                    "Приоритет": row.get("Приоритет", "Не указано"),
-                    "Бизнес-линия": row.get("Бизнес-линия", "Не указано"),
-                    APPEALS_COL: row[APPEALS_COL],
-                    "Код": row.get("Код", ""),
-                })
-            bubble_df = pd.DataFrame(bubble_data)
-
-            bl_color_map = {"КБ": "#378ADD", "РБ": "#1D9E75", "Общее": "#EF9F27", "Не указано": "#888780"}
-
-            fig = px.scatter(
-                bubble_df,
-                x="Классификация",
-                y="Приоритет",
-                size=APPEALS_COL,
-                color="Бизнес-линия",
-                color_discrete_map=bl_color_map,
-                size_max=50,
-                hover_data={"Код": True, APPEALS_COL: True},
-                category_orders={"Приоритет": priority_order},
+            st.subheader("Обращения: категория × приоритет")
+            priority_order = ["Блокирующий", "Критичный", "Средний", "Низкий", "Незначительный"]
+            heat_data = (
+                impact_df.groupby(["Классификация", "Приоритет"])[APPEALS_COL].sum()
+                .reset_index()
+            )
+            # Строим полную матрицу чтобы все ячейки были заполнены
+            all_cats = sorted(heat_data["Классификация"].unique())
+            all_pris = [p for p in priority_order if p in heat_data["Приоритет"].unique()]
+            heat_pivot = (
+                heat_data.pivot(index="Приоритет", columns="Классификация", values=APPEALS_COL)
+                .reindex(index=all_pris, columns=all_cats)
+                .fillna(0)
+            )
+            fig = px.imshow(
+                heat_pivot,
+                color_continuous_scale="YlOrRd",
+                text_auto=True,
+                aspect="auto",
+                labels=dict(color="Обращений"),
             )
             fig.update_layout(
                 height=420,
                 margin=dict(l=10, r=10, t=30, b=100),
                 xaxis_title=None,
                 yaxis_title=None,
-                legend_title="Бизнес-линия",
                 xaxis=dict(tickangle=-35),
+                coloraxis_showscale=False,
             )
+            fig.update_traces(textfont_size=13)
             st.plotly_chart(fig, use_container_width=True)
 
         with ic2:
