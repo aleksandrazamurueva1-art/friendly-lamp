@@ -113,12 +113,28 @@ def extract_justai(labels):
 
 
 @st.cache_data(ttl=300)
-def load_data() -> pd.DataFrame:
+def load_data() -> tuple:
+    import re as _re
+    sheet_date = None
+    try:
+        import openpyxl
+        import io
+        import urllib.request
+        raw = urllib.request.urlopen(SHEET_URL).read()
+        wb = openpyxl.load_workbook(io.BytesIO(raw))
+        sheet_name = wb.sheetnames[0]
+        # Парсим дату из названия листа вида "... 2026-05-09T23_08_52+0300"
+        match = _re.search(r"(\d{4}-\d{2}-\d{2})T(\d{2})_(\d{2})", sheet_name)
+        if match:
+            sheet_date = f"{match.group(1)} {match.group(2)}:{match.group(3)}"
+    except Exception:
+        pass
+
     try:
         df = pd.read_excel(SHEET_URL, header=3)
     except Exception as e:
         st.error(f"Не удалось загрузить данные из Google Sheets: {e}")
-        return pd.DataFrame()
+        return pd.DataFrame(), sheet_date
 
     df.columns = [str(c).strip() for c in df.columns]
 
@@ -148,7 +164,7 @@ def load_data() -> pd.DataFrame:
     else:
         df["Просрочен"] = False
 
-    return df
+    return df, sheet_date
 
 
 def bar_with_pct(data, x, y, title, orientation="v", height=390):
@@ -188,31 +204,36 @@ def get_week_bounds(today):
 
 # ── Заголовок ──────────────────────────────────────────────────────────────
 st.title("🐞 Панель управления ошибками")
-st.caption("Активный backlog: учитываются только дефекты не в статусах «Закрыт» и «В релизе».")
 
 if st.sidebar.button("🔄 Обновить данные"):
     st.cache_data.clear()
 
-df = load_data()
+df, sheet_date = load_data()
 
 if df.empty:
     st.error("Нет данных. Проверьте доступ к Google Sheets.")
     st.stop()
 
+updated_at = pd.Timestamp.now().strftime("%d.%m.%Y %H:%M")
+sheet_date_str = f"📅 Данные на: **{sheet_date}**  · " if sheet_date else ""
+st.caption(f"{sheet_date_str}🔄 Последнее обновление: **{updated_at}**")
+
 st.sidebar.header("Фильтры")
 
+DEFAULT_STATUSES = ["Беклог продукта", "Новый", "В Работе", "На исправление", "Принят к исправлению"]
 
-def multiselect_filter(label, column, source=None):
+def multiselect_filter(label, column, default=None, source=None):
     src = source if source is not None else df
     if column not in src.columns:
         return []
     values = sorted([v for v in src[column].dropna().unique() if str(v) != "nan"])
-    return st.sidebar.multiselect(label, values)
+    pre = [v for v in (default or []) if v in values]
+    return st.sidebar.multiselect(label, values, default=pre)
 
 
 business_filter = multiselect_filter("Бизнес-линия", "Бизнес-линия")
 classification_filter = multiselect_filter("Классификация", "Классификация")
-status_filter = multiselect_filter("Статус", "Статус")
+status_filter = multiselect_filter("Статус", "Статус", default=DEFAULT_STATUSES)
 priority_filter = multiselect_filter("Приоритет", "Приоритет")
 assignee_filter = multiselect_filter("Исполнитель", "Исполнитель")
 version_filter = multiselect_filter("Версия", VERSION_COL)
