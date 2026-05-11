@@ -846,7 +846,7 @@ else:
                 pass
         return None, s
 
-    rel_df = filtered[filtered[VERSION_COL].notna()].copy()
+    rel_df = df[df[VERSION_COL].notna()].copy()
     rel_df["_rel_label"] = rel_df[VERSION_COL].astype(str).str.strip()
     rel_df = rel_df[rel_df["_rel_label"].str.lower() != "nan"]
 
@@ -862,6 +862,10 @@ else:
 
         # Сортируем: сначала с датой по возрастанию, потом без даты
         releases.sort(key=lambda r: (r["date"] is None, r["date"] or pd.Timestamp.max))
+
+        # Убираем релизы старше 2 недель (без даты показываем всегда)
+        two_weeks_ago = today - timedelta(weeks=2)
+        releases = [r for r in releases if r["date"] is None or r["date"] >= two_weeks_ago]
 
         # Цвета шапок карточек
         header_colors = [
