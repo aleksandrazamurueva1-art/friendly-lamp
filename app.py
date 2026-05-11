@@ -362,45 +362,112 @@ for tab, w_start, w_end, label in [
             if DATE_RESOLUTION_COL in df.columns else df.iloc[0:0]
         )
 
+        def parse_appeals(frame):
+            if APPEALS_COL not in frame.columns:
+                return frame.assign(**{APPEALS_COL: 0})
+            f = frame.copy()
+            f[APPEALS_COL] = (
+                f[APPEALS_COL].astype(str).str.strip()
+                .str.replace(",", ".", regex=False).str.replace(" ", "", regex=False)
+                .pipe(pd.to_numeric, errors="coerce").fillna(0).astype(int)
+            )
+            return f
+
+        w_new = parse_appeals(w_new)
+        w_closed = parse_appeals(w_closed)
+
+        w_new_with = w_new[w_new[APPEALS_COL] > 0]
+        w_closed_with = w_closed[w_closed[APPEALS_COL] > 0]
+
         wk1, wk2 = st.columns(2)
-        wk1.metric("Открыто за неделю", len(w_new))
-        wk2.metric("Закрыто за неделю", len(w_closed))
+        with wk1:
+            st.markdown(f"""
+            <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem 1.25rem;">
+                <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:4px;">Открыто за неделю</div>
+                <div style="font-size:28px;font-weight:500;margin-bottom:10px;">{len(w_new)}</div>
+                <div style="height:0.5px;background:var(--color-border-tertiary);margin-bottom:10px;"></div>
+                <div style="display:flex;justify-content:space-between;">
+                    <div>
+                        <div style="font-size:12px;color:var(--color-text-secondary);">из них с обращениями</div>
+                        <div style="font-size:18px;font-weight:500;color:var(--color-text-danger);">{len(w_new_with)} дефекта</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:12px;color:var(--color-text-secondary);">всего обращений</div>
+                        <div style="font-size:18px;font-weight:500;color:var(--color-text-danger);">{int(w_new_with[APPEALS_COL].sum()) if not w_new_with.empty else 0}</div>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+        with wk2:
+            st.markdown(f"""
+            <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem 1.25rem;">
+                <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:4px;">Закрыто за неделю</div>
+                <div style="font-size:28px;font-weight:500;margin-bottom:10px;">{len(w_closed)}</div>
+                <div style="height:0.5px;background:var(--color-border-tertiary);margin-bottom:10px;"></div>
+                <div style="display:flex;justify-content:space-between;">
+                    <div>
+                        <div style="font-size:12px;color:var(--color-text-secondary);">из них с обращениями</div>
+                        <div style="font-size:18px;font-weight:500;color:var(--color-text-success);">{len(w_closed_with)} дефекта</div>
+                    </div>
+                    <div style="text-align:right;">
+                        <div style="font-size:12px;color:var(--color-text-secondary);">всего обращений</div>
+                        <div style="font-size:18px;font-weight:500;color:var(--color-text-success);">{int(w_closed_with[APPEALS_COL].sum()) if not w_closed_with.empty else 0}</div>
+                    </div>
+                </div>
+            </div>""", unsafe_allow_html=True)
+
+        st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
 
         if not w_new.empty:
             wc1, wc2, wc3 = st.columns(3)
 
+            def stacked_bar(frame, group_col, orient="v", height=350):
+                with_appeals = frame[frame[APPEALS_COL] > 0].groupby(group_col).size().reset_index(name="С обращениями")
+                without_appeals = frame[frame[APPEALS_COL] == 0].groupby(group_col).size().reset_index(name="Без обращений")
+                merged = pd.merge(without_appeals, with_appeals, on=group_col, how="outer").fillna(0)
+                merged["С обращениями"] = merged["С обращениями"].astype(int)
+                merged["Без обращений"] = merged["Без обращений"].astype(int)
+                merged["Всего"] = merged["С обращениями"] + merged["Без обращений"]
+                merged = merged.sort_values("Всего", ascending=(orient == "h"))
+                fig = px.bar(
+                    merged, x="Всего" if orient == "h" else group_col,
+                    y=group_col if orient == "h" else "Всего",
+                    orientation=orient,
+                    color_discrete_sequence=["#378ADD"],
+                )
+                if not merged[merged["С обращениями"] > 0].empty:
+                    fig2 = px.bar(
+                        merged, x="С обращениями" if orient == "h" else group_col,
+                        y=group_col if orient == "h" else "С обращениями",
+                        orientation=orient,
+                        color_discrete_sequence=["#f85149"],
+                    )
+                    fig.add_traces(fig2.data)
+                fig.update_layout(
+                    height=height,
+                    barmode="overlay",
+                    margin=dict(l=10, r=10, t=10, b=10),
+                    xaxis_title=None, yaxis_title=None,
+                    showlegend=True,
+                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5,
+                                itemsizing="constant", font=dict(size=11)),
+                )
+                fig.data[0].name = "Без обращений"
+                if len(fig.data) > 1:
+                    fig.data[1].name = "С обращениями"
+                return fig
+
             with wc1:
                 st.subheader("По категориям")
-                wcat = (
-                    w_new.groupby("Классификация").size()
-                    .reset_index(name="Количество")
-                    .sort_values("Количество", ascending=True)
-                )
-                fig = bar_with_pct(wcat, "Количество", "Классификация", "", orientation="h", height=350)
-                if fig:
-                    st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(stacked_bar(w_new, "Классификация", orient="h"), use_container_width=True)
 
             with wc2:
                 st.subheader("По приоритетам")
-                wpri = (
-                    w_new.groupby("Приоритет").size()
-                    .reset_index(name="Количество")
-                    .sort_values("Количество", ascending=False)
-                )
-                fig = bar_with_pct(wpri, "Приоритет", "Количество", "", height=350)
-                if fig:
-                    st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(stacked_bar(w_new, "Приоритет", orient="v"), use_container_width=True)
 
             with wc3:
                 st.subheader("По бизнес-линиям")
-                wbl = (
-                    w_new.groupby("Бизнес-линия").size()
-                    .reset_index(name="Количество")
-                    .sort_values("Количество", ascending=False)
-                )
-                fig = bar_with_pct(wbl, "Бизнес-линия", "Количество", "", height=350)
-                if fig:
-                    st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(stacked_bar(w_new, "Бизнес-линия", orient="v"), use_container_width=True)
         else:
             st.info(f"Нет новых багов за {label} неделю.")
 
@@ -585,8 +652,17 @@ st.markdown('<div class="section-title">🔥 Влияние дефектов н�
 if APPEALS_COL not in filtered.columns:
     st.info(f"Колонка «{APPEALS_COL}» не найдена в данных.")
 else:
-    impact_df = filtered[filtered[APPEALS_COL].notna() & (filtered[APPEALS_COL] > 0)].copy()
-    impact_df[APPEALS_COL] = pd.to_numeric(impact_df[APPEALS_COL], errors="coerce").fillna(0).astype(int)
+    impact_df = filtered.copy()
+    impact_df[APPEALS_COL] = (
+        impact_df[APPEALS_COL]
+        .astype(str)
+        .str.strip()
+        .str.replace(",", ".", regex=False)
+        .str.replace(" ", "", regex=False)
+        .pipe(pd.to_numeric, errors="coerce")
+        .fillna(0)
+        .astype(int)
+    )
     impact_df = impact_df[impact_df[APPEALS_COL] > 0]
 
     if impact_df.empty:
@@ -667,6 +743,68 @@ else:
                 showlegend=False,
             )
             st.plotly_chart(fig, use_container_width=True)
+
+        # Динамика открытия и закрытия багов с обращениями
+        id1, id2 = st.columns(2)
+
+        with id1:
+            st.subheader("Динамика открытия (с обращениями)")
+            if DATE_CREATED_COL in impact_df.columns and impact_df[DATE_CREATED_COL].notna().any():
+                open_dyn = (
+                    impact_df.dropna(subset=[DATE_CREATED_COL])
+                    .assign(week=lambda x: x[DATE_CREATED_COL].dt.to_period("W").dt.start_time)
+                    .groupby("week").agg(
+                        Багов=("Код", "count"),
+                        Обращений=(APPEALS_COL, "sum")
+                    )
+                    .reset_index()
+                )
+                fig = px.bar(
+                    open_dyn, x="week", y="Обращений",
+                    text="Обращений",
+                    color_discrete_sequence=["#f85149"],
+                    hover_data={"Багов": True},
+                )
+                fig.update_traces(textposition="outside")
+                fig.update_layout(height=350, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Нет данных по дате создания.")
+
+        with id2:
+            st.subheader("Динамика закрытия (с обращениями)")
+            # Берём все закрытые баги с обращениями из полного df
+            impact_all = df.copy()
+            impact_all[APPEALS_COL] = (
+                impact_all[APPEALS_COL].astype(str).str.strip()
+                .str.replace(",", ".", regex=False).str.replace(" ", "", regex=False)
+                .pipe(pd.to_numeric, errors="coerce").fillna(0).astype(int)
+            )
+            impact_closed = impact_all[
+                (impact_all[APPEALS_COL] > 0)
+                & (impact_all["Статус"].astype(str).isin(CLOSED_STATUSES))
+            ]
+            if DATE_RESOLUTION_COL in impact_closed.columns and impact_closed[DATE_RESOLUTION_COL].notna().any():
+                close_dyn = (
+                    impact_closed.dropna(subset=[DATE_RESOLUTION_COL])
+                    .assign(week=lambda x: x[DATE_RESOLUTION_COL].dt.to_period("W").dt.start_time)
+                    .groupby("week").agg(
+                        Багов=("Код", "count"),
+                        Обращений=(APPEALS_COL, "sum")
+                    )
+                    .reset_index()
+                )
+                fig = px.bar(
+                    close_dyn, x="week", y="Обращений",
+                    text="Обращений",
+                    color_discrete_sequence=["#238636"],
+                    hover_data={"Багов": True},
+                )
+                fig.update_traces(textposition="outside")
+                fig.update_layout(height=350, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Нет закрытых багов с обращениями.")
 
         st.subheader("Топ дефектов по количеству обращений")
         top_bugs = impact_df.sort_values(APPEALS_COL, ascending=False).head(20)
