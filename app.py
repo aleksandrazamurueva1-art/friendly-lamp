@@ -363,11 +363,12 @@ for tab, w_start, w_end, label in [
         )
 
         def parse_appeals(frame):
-            if APPEALS_COL not in frame.columns:
-                return frame.assign(**{APPEALS_COL: 0})
+            col = "Количество обращений"
+            if col not in frame.columns:
+                return frame.assign(**{col: 0})
             f = frame.copy()
-            f[APPEALS_COL] = (
-                f[APPEALS_COL].astype(str).str.strip()
+            f[col] = (
+                f[col].astype(str).str.strip()
                 .str.replace(",", ".", regex=False).str.replace(" ", "", regex=False)
                 .pipe(pd.to_numeric, errors="coerce").fillna(0).astype(int)
             )
@@ -376,8 +377,8 @@ for tab, w_start, w_end, label in [
         w_new = parse_appeals(w_new)
         w_closed = parse_appeals(w_closed)
 
-        w_new_with = w_new[w_new[APPEALS_COL] > 0]
-        w_closed_with = w_closed[w_closed[APPEALS_COL] > 0]
+        w_new_with = w_new[w_new["Количество обращений"] > 0]
+        w_closed_with = w_closed[w_closed["Количество обращений"] > 0]
 
         wk1, wk2 = st.columns(2)
         with wk1:
@@ -393,7 +394,7 @@ for tab, w_start, w_end, label in [
                     </div>
                     <div style="text-align:right;">
                         <div style="font-size:12px;color:var(--color-text-secondary);">всего обращений</div>
-                        <div style="font-size:18px;font-weight:500;color:var(--color-text-danger);">{int(w_new_with[APPEALS_COL].sum()) if not w_new_with.empty else 0}</div>
+                        <div style="font-size:18px;font-weight:500;color:var(--color-text-danger);">{int(w_new_with["Количество обращений"].sum()) if not w_new_with.empty else 0}</div>
                     </div>
                 </div>
             </div>""", unsafe_allow_html=True)
@@ -411,7 +412,7 @@ for tab, w_start, w_end, label in [
                     </div>
                     <div style="text-align:right;">
                         <div style="font-size:12px;color:var(--color-text-secondary);">всего обращений</div>
-                        <div style="font-size:18px;font-weight:500;color:var(--color-text-success);">{int(w_closed_with[APPEALS_COL].sum()) if not w_closed_with.empty else 0}</div>
+                        <div style="font-size:18px;font-weight:500;color:var(--color-text-success);">{int(w_closed_with["Количество обращений"].sum()) if not w_closed_with.empty else 0}</div>
                     </div>
                 </div>
             </div>""", unsafe_allow_html=True)
@@ -422,8 +423,9 @@ for tab, w_start, w_end, label in [
             wc1, wc2, wc3 = st.columns(3)
 
             def stacked_bar(frame, group_col, orient="v", height=350):
-                with_appeals = frame[frame[APPEALS_COL] > 0].groupby(group_col).size().reset_index(name="С обращениями")
-                without_appeals = frame[frame[APPEALS_COL] == 0].groupby(group_col).size().reset_index(name="Без обращений")
+                acol = "Количество обращений"
+                with_appeals = frame[frame[acol] > 0].groupby(group_col).size().reset_index(name="С обращениями")
+                without_appeals = frame[frame[acol] == 0].groupby(group_col).size().reset_index(name="Без обращений")
                 merged = pd.merge(without_appeals, with_appeals, on=group_col, how="outer").fillna(0)
                 merged["С обращениями"] = merged["С обращениями"].astype(int)
                 merged["Без обращений"] = merged["Без обращений"].astype(int)
