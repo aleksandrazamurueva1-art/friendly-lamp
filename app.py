@@ -824,6 +824,160 @@ else:
             },
         )
 
+# ── ПЛАНЫ ПО РЕЛИЗАМ ────────────────────────────────────────────────────────
+st.markdown('<div class="section-title">🚀 Планы исправления по релизам</div>', unsafe_allow_html=True)
+
+if VERSION_COL not in filtered.columns:
+    st.info(f"Колонка «{VERSION_COL}» не найдена в данных.")
+else:
+    import re as _re
+
+    def parse_release(text):
+        """Возвращает (дата или None, исходный текст)"""
+        s = str(text).strip()
+        if not s or s.lower() in ("nan", "none", ""):
+            return None, None
+        m = _re.search(r"(\d{2})\.(\d{2})\.(\d{4})", s)
+        if m:
+            try:
+                dt = pd.Timestamp(f"{m.group(3)}-{m.group(2)}-{m.group(1)}")
+                return dt, s
+            except Exception:
+                pass
+        return None, s
+
+    rel_df = filtered[filtered[VERSION_COL].notna()].copy()
+    rel_df["_rel_label"] = rel_df[VERSION_COL].astype(str).str.strip()
+    rel_df = rel_df[rel_df["_rel_label"].str.lower() != "nan"]
+
+    if rel_df.empty:
+        st.info("Нет дефектов с заполненным полем версии.")
+    else:
+        # Собираем уникальные релизы
+        releases = []
+        for label in rel_df["_rel_label"].unique():
+            dt, display = parse_release(label)
+            if display:
+                releases.append({"label": label, "display": display, "date": dt})
+
+        # Сортируем: сначала с датой по возрастанию, потом без даты
+        releases.sort(key=lambda r: (r["date"] is None, r["date"] or pd.Timestamp.max))
+
+        # Цвета шапок карточек
+        header_colors = [
+            ("#0c447c", "#85b7eb", "#e6f1fb"),
+            ("#27500a", "#97c459", "#eaf3de"),
+            ("#3c3489", "#afa9ec", "#eeedfe"),
+            ("#633806", "#ef9f27", "#faeeda"),
+            ("#791f1f", "#f09595", "#fcebeb"),
+        ]
+
+        priority_colors = {
+            "Блокирующий": "#e24b4a",
+            "Критичный":   "#ef9f27",
+            "Средний":     "#378add",
+            "Низкий":      "#888780",
+            "Незначительный": "#b4b2a9",
+        }
+        bl_styles = {
+            "КБ":         ("background:#e6f1fb;color:#0c447c;"),
+            "РБ":         ("background:#eaf3de;color:#27500a;"),
+            "Общее":      ("background:#faeeda;color:#633806;"),
+            "Не указано": ("background:#f1efe8;color:#5f5e5a;"),
+        }
+
+        cols = st.columns(min(len(releases), 3))
+
+        for idx, rel in enumerate(releases):
+            col = cols[idx % 3]
+            bg, sub_c, title_c = header_colors[idx % len(header_colors)]
+
+            r_bugs = rel_df[rel_df["_rel_label"] == rel["label"]]
+
+            # Обращения
+            if APPEALS_COL in r_bugs.columns:
+                appeals_vals = (
+                    r_bugs[APPEALS_COL].astype(str).str.strip()
+                    .str.replace(",", ".", regex=False).str.replace(" ", "", regex=False)
+                    .pipe(pd.to_numeric, errors="coerce").fillna(0)
+                )
+                total_appeals = int(appeals_vals.sum())
+            else:
+                total_appeals = 0
+
+            total_bugs = len(r_bugs)
+
+            # Приоритеты
+            pri_counts = r_bugs["Приоритет"].value_counts() if "Приоритет" in r_bugs.columns else pd.Series(dtype=int)
+            pri_max = pri_counts.max() if not pri_counts.empty else 1
+
+            pri_html = ""
+            for pri_name in ["Блокирующий", "Критичный", "Средний", "Низкий", "Незначительный"]:
+                cnt = int(pri_counts.get(pri_name, 0))
+                if cnt == 0:
+                    continue
+                pct = int(cnt / pri_max * 100)
+                clr = priority_colors.get(pri_name, "#888780")
+                pri_html += f"""
+                <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+                  <span style="font-size:11px;color:#9da7b3;width:90px;flex-shrink:0;">{pri_name}</span>
+                  <div style="flex:1;height:10px;background:#21262d;border-radius:4px;overflow:hidden;">
+                    <div style="width:{pct}%;height:100%;background:{clr};border-radius:4px;"></div>
+                  </div>
+                  <span style="font-size:11px;color:#9da7b3;width:18px;text-align:right;">{cnt}</span>
+                </div>"""
+
+            # Бизнес-линии
+            bl_counts = r_bugs["Бизнес-линия"].value_counts() if "Бизнес-линия" in r_bugs.columns else pd.Series(dtype=int)
+            bl_html = ""
+            for bl_name, cnt in bl_counts.items():
+                sty = bl_styles.get(bl_name, "background:#f1efe8;color:#5f5e5a;")
+                bl_html += f'<span style="{sty}font-size:11px;padding:3px 8px;border-radius:6px;">{bl_name}: {cnt}</span>'
+
+            # Топ категорий
+            cat_counts = r_bugs["Классификация"].value_counts().head(3) if "Классификация" in r_bugs.columns else pd.Series(dtype=int)
+            cat_html = ""
+            for cat_name, cnt in cat_counts.items():
+                cat_html += f"""
+                <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px;">
+                  <span style="color:#e6edf3;">{cat_name}</span>
+                  <span style="color:#9da7b3;">{cnt}</span>
+                </div>"""
+
+            date_str = rel["date"].strftime("%d.%m.%Y") if rel["date"] else ""
+            display_label = rel["display"]
+
+            with col:
+                st.markdown(f"""
+                <div style="background:#161b22;border:1px solid #30363d;border-radius:12px;overflow:hidden;margin-bottom:16px;">
+                  <div style="background:{bg};padding:12px 16px;display:flex;justify-content:space-between;align-items:center;">
+                    <div>
+                      <div style="font-size:11px;color:{sub_c};margin-bottom:2px;">Версия</div>
+                      <div style="font-size:15px;font-weight:500;color:{title_c};">{display_label}</div>
+                    </div>
+                    {"<div style='text-align:right;'><div style='font-size:11px;color:" + sub_c + ";margin-bottom:2px;'>Дата</div><div style='font-size:13px;font-weight:500;color:" + title_c + ";'>" + date_str + "</div></div>" if date_str else ""}
+                  </div>
+                  <div style="padding:12px 16px;">
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px;">
+                      <div style="background:#21262d;border-radius:8px;padding:8px 10px;text-align:center;">
+                        <div style="font-size:11px;color:#9da7b3;">Всего багов</div>
+                        <div style="font-size:22px;font-weight:500;color:#e6edf3;">{total_bugs}</div>
+                      </div>
+                      <div style="background:#21262d;border-radius:8px;padding:8px 10px;text-align:center;">
+                        <div style="font-size:11px;color:#9da7b3;">Обращений</div>
+                        <div style="font-size:22px;font-weight:500;color:#e6edf3;">{total_appeals}</div>
+                      </div>
+                    </div>
+                    <div style="font-size:12px;color:#9da7b3;margin-bottom:6px;">По приоритетам</div>
+                    {pri_html}
+                    <div style="font-size:12px;color:#9da7b3;margin:10px 0 6px;">По бизнес-линиям</div>
+                    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px;">{bl_html}</div>
+                    <div style="font-size:12px;color:#9da7b3;margin-bottom:6px;">Топ категорий</div>
+                    {cat_html}
+                  </div>
+                </div>
+                """, unsafe_allow_html=True)
+
 # ── ДЕТАЛИЗАЦИЯ ─────────────────────────────────────────────────────────────
 with st.expander("Детализация дефектов"):
     show_cols = [
