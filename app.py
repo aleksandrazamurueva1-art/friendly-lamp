@@ -39,6 +39,7 @@ DATE_CREATED_COL = "Дата создания"
 DATE_RESOLUTION_COL = "Дата резолюции"
 DUE_DATE_COL = "Срок исполнения"
 VERSION_COL = "Исправить в версиях"
+APPEALS_COL = "Количество обращений"
 
 
 st.markdown(
@@ -363,7 +364,7 @@ for tab, w_start, w_end, label in [
         )
 
         def parse_appeals(frame):
-            col = "Количество обращений"
+            col = APPEALS_COL
             if col not in frame.columns:
                 return frame.assign(**{col: 0})
             f = frame.copy()
@@ -377,42 +378,42 @@ for tab, w_start, w_end, label in [
         w_new = parse_appeals(w_new)
         w_closed = parse_appeals(w_closed)
 
-        w_new_with = w_new[w_new["Количество обращений"] > 0]
-        w_closed_with = w_closed[w_closed["Количество обращений"] > 0]
+        w_new_with = w_new[w_new[APPEALS_COL] > 0]
+        w_closed_with = w_closed[w_closed[APPEALS_COL] > 0]
 
         wk1, wk2 = st.columns(2)
         with wk1:
             st.markdown(f"""
-            <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem 1.25rem;border:0.5px solid var(--color-border-tertiary);">
-                <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:4px;">Открыто за неделю</div>
-                <div style="font-size:28px;font-weight:500;margin-bottom:12px;">{len(w_new)}</div>
-                <div style="height:0.5px;background:var(--color-border-tertiary);margin-bottom:12px;"></div>
+            <div style="background:#161b22;border-radius:12px;padding:1rem 1.25rem;border:1px solid #30363d;">
+                <div style="font-size:13px;color:#9da7b3;margin-bottom:4px;">Открыто за неделю</div>
+                <div style="font-size:28px;font-weight:500;color:#e6edf3;margin-bottom:12px;">{len(w_new)}</div>
+                <div style="height:1px;background:#30363d;margin-bottom:12px;"></div>
                 <div style="display:flex;justify-content:space-between;align-items:flex-end;">
                     <div>
-                        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">из них с обращениями</div>
-                        <div style="font-size:20px;font-weight:500;color:var(--color-text-danger);">{len(w_new_with)} дефекта</div>
+                        <div style="font-size:12px;color:#9da7b3;margin-bottom:4px;">из них с обращениями</div>
+                        <div style="font-size:20px;font-weight:500;color:#f85149;">{len(w_new_with)} дефекта</div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">всего обращений</div>
-                        <div style="font-size:20px;font-weight:500;color:var(--color-text-danger);">{int(w_new_with["Количество обращений"].sum()) if not w_new_with.empty else 0}</div>
+                        <div style="font-size:12px;color:#9da7b3;margin-bottom:4px;">всего обращений</div>
+                        <div style="font-size:20px;font-weight:500;color:#f85149;">{int(w_new_with[APPEALS_COL].sum()) if not w_new_with.empty else 0}</div>
                     </div>
                 </div>
             </div>""", unsafe_allow_html=True)
 
         with wk2:
             st.markdown(f"""
-            <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem 1.25rem;border:0.5px solid var(--color-border-tertiary);">
-                <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:4px;">Закрыто за неделю</div>
-                <div style="font-size:28px;font-weight:500;margin-bottom:12px;">{len(w_closed)}</div>
-                <div style="height:0.5px;background:var(--color-border-tertiary);margin-bottom:12px;"></div>
+            <div style="background:#161b22;border-radius:12px;padding:1rem 1.25rem;border:1px solid #30363d;">
+                <div style="font-size:13px;color:#9da7b3;margin-bottom:4px;">Закрыто за неделю</div>
+                <div style="font-size:28px;font-weight:500;color:#e6edf3;margin-bottom:12px;">{len(w_closed)}</div>
+                <div style="height:1px;background:#30363d;margin-bottom:12px;"></div>
                 <div style="display:flex;justify-content:space-between;align-items:flex-end;">
                     <div>
-                        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">из них с обращениями</div>
-                        <div style="font-size:20px;font-weight:500;color:var(--color-text-success);">{len(w_closed_with)} дефекта</div>
+                        <div style="font-size:12px;color:#9da7b3;margin-bottom:4px;">из них с обращениями</div>
+                        <div style="font-size:20px;font-weight:500;color:#3fb950;">{len(w_closed_with)} дефекта</div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">всего обращений</div>
-                        <div style="font-size:20px;font-weight:500;color:var(--color-text-success);">{int(w_closed_with["Количество обращений"].sum()) if not w_closed_with.empty else 0}</div>
+                        <div style="font-size:12px;color:#9da7b3;margin-bottom:4px;">всего обращений</div>
+                        <div style="font-size:20px;font-weight:500;color:#3fb950;">{int(w_closed_with[APPEALS_COL].sum()) if not w_closed_with.empty else 0}</div>
                     </div>
                 </div>
             </div>""", unsafe_allow_html=True)
@@ -423,7 +424,7 @@ for tab, w_start, w_end, label in [
             wc1, wc2, wc3 = st.columns(3)
 
             def stacked_bar(frame, group_col, orient="v", height=350):
-                acol = "Количество обращений"
+                acol = APPEALS_COL
                 with_appeals = frame[frame[acol] > 0].groupby(group_col).size().reset_index(name="С обращениями")
                 without_appeals = frame[frame[acol] == 0].groupby(group_col).size().reset_index(name="Без обращений")
                 merged = pd.merge(without_appeals, with_appeals, on=group_col, how="outer").fillna(0)
@@ -647,8 +648,6 @@ else:
             st.info("Нет закрытых багов JustAI.")
 
 # ── ВЛИЯНИЕ НА ПОЛЬЗОВАТЕЛЕЙ ────────────────────────────────────────────────
-APPEALS_COL = "Количество обращений"
-
 st.markdown('<div class="section-title">🔥 Влияние дефектов на пользователей</div>', unsafe_allow_html=True)
 
 if APPEALS_COL not in filtered.columns:
