@@ -383,36 +383,36 @@ for tab, w_start, w_end, label in [
         wk1, wk2 = st.columns(2)
         with wk1:
             st.markdown(f"""
-            <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem 1.25rem;">
+            <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem 1.25rem;border:0.5px solid var(--color-border-tertiary);">
                 <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:4px;">Открыто за неделю</div>
-                <div style="font-size:28px;font-weight:500;margin-bottom:10px;">{len(w_new)}</div>
-                <div style="height:0.5px;background:var(--color-border-tertiary);margin-bottom:10px;"></div>
-                <div style="display:flex;justify-content:space-between;">
+                <div style="font-size:28px;font-weight:500;margin-bottom:12px;">{len(w_new)}</div>
+                <div style="height:0.5px;background:var(--color-border-tertiary);margin-bottom:12px;"></div>
+                <div style="display:flex;justify-content:space-between;align-items:flex-end;">
                     <div>
-                        <div style="font-size:12px;color:var(--color-text-secondary);">из них с обращениями</div>
-                        <div style="font-size:18px;font-weight:500;color:var(--color-text-danger);">{len(w_new_with)} дефекта</div>
+                        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">из них с обращениями</div>
+                        <div style="font-size:20px;font-weight:500;color:var(--color-text-danger);">{len(w_new_with)} дефекта</div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-size:12px;color:var(--color-text-secondary);">всего обращений</div>
-                        <div style="font-size:18px;font-weight:500;color:var(--color-text-danger);">{int(w_new_with["Количество обращений"].sum()) if not w_new_with.empty else 0}</div>
+                        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">всего обращений</div>
+                        <div style="font-size:20px;font-weight:500;color:var(--color-text-danger);">{int(w_new_with["Количество обращений"].sum()) if not w_new_with.empty else 0}</div>
                     </div>
                 </div>
             </div>""", unsafe_allow_html=True)
 
         with wk2:
             st.markdown(f"""
-            <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem 1.25rem;">
+            <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:1rem 1.25rem;border:0.5px solid var(--color-border-tertiary);">
                 <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:4px;">Закрыто за неделю</div>
-                <div style="font-size:28px;font-weight:500;margin-bottom:10px;">{len(w_closed)}</div>
-                <div style="height:0.5px;background:var(--color-border-tertiary);margin-bottom:10px;"></div>
-                <div style="display:flex;justify-content:space-between;">
+                <div style="font-size:28px;font-weight:500;margin-bottom:12px;">{len(w_closed)}</div>
+                <div style="height:0.5px;background:var(--color-border-tertiary);margin-bottom:12px;"></div>
+                <div style="display:flex;justify-content:space-between;align-items:flex-end;">
                     <div>
-                        <div style="font-size:12px;color:var(--color-text-secondary);">из них с обращениями</div>
-                        <div style="font-size:18px;font-weight:500;color:var(--color-text-success);">{len(w_closed_with)} дефекта</div>
+                        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">из них с обращениями</div>
+                        <div style="font-size:20px;font-weight:500;color:var(--color-text-success);">{len(w_closed_with)} дефекта</div>
                     </div>
                     <div style="text-align:right;">
-                        <div style="font-size:12px;color:var(--color-text-secondary);">всего обращений</div>
-                        <div style="font-size:18px;font-weight:500;color:var(--color-text-success);">{int(w_closed_with["Количество обращений"].sum()) if not w_closed_with.empty else 0}</div>
+                        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:4px;">всего обращений</div>
+                        <div style="font-size:20px;font-weight:500;color:var(--color-text-success);">{int(w_closed_with["Количество обращений"].sum()) if not w_closed_with.empty else 0}</div>
                     </div>
                 </div>
             </div>""", unsafe_allow_html=True)
