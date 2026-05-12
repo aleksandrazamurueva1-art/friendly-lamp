@@ -462,15 +462,15 @@ for tab, w_start, w_end, label in [
 
             with wc1:
                 st.subheader("По категориям")
-                st.plotly_chart(stacked_bar(w_new, "Классификация", orient="h"), use_container_width=True)
+                st.plotly_chart(stacked_bar(w_new, "Классификация", orient="h"), use_container_width=True, key=f"chart_cat_{label}")
 
             with wc2:
                 st.subheader("По приоритетам")
-                st.plotly_chart(stacked_bar(w_new, "Приоритет", orient="v"), use_container_width=True)
+                st.plotly_chart(stacked_bar(w_new, "Приоритет", orient="v"), use_container_width=True, key=f"chart_pri_{label}")
 
             with wc3:
                 st.subheader("По бизнес-линиям")
-                st.plotly_chart(stacked_bar(w_new, "Бизнес-линия", orient="v"), use_container_width=True)
+                st.plotly_chart(stacked_bar(w_new, "Бизнес-линия", orient="v"), use_container_width=True, key=f"chart_bl_{label}")
         else:
             st.info(f"Нет новых багов за {label} неделю.")
 
@@ -495,7 +495,7 @@ with col1:
         fig = px.bar(new_trend, x="week", y="Новые баги", text="label")
         fig.update_traces(textposition="outside")
         fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, yaxis_title="Новые баги", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="chart_1")
     else:
         st.info("Нет данных по дате создания.")
 
@@ -516,7 +516,7 @@ with col2:
         fig = px.bar(closed_trend, x="week", y="Закрытые баги", text="label", color_discrete_sequence=["#238636"])
         fig.update_traces(textposition="outside")
         fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, yaxis_title="Закрытые баги", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="chart_2")
     else:
         st.info("Нет данных по дате резолюции.")
 
@@ -534,7 +534,7 @@ with col3:
     )
     fig = bar_with_pct(priority, "Приоритет", "Количество", "")
     if fig:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="chart_3")
 
 with col4:
     st.subheader("Баги по бизнес-линиям")
@@ -545,7 +545,7 @@ with col4:
     )
     fig = bar_with_pct(business, "Бизнес-линия", "Количество", "")
     if fig:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="chart_4")
 
 col5, col6 = st.columns(2)
 
@@ -559,7 +559,7 @@ with col5:
     )
     fig = bar_with_pct(classification, "Количество", "Классификация", "", orientation="h", height=470)
     if fig:
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="chart_5")
 
 with col6:
     st.subheader("Классификация × Бизнес-линия")
@@ -570,7 +570,7 @@ with col6:
     if not matrix.empty:
         fig = px.density_heatmap(matrix, x="Бизнес-линия", y="Классификация", z="Количество", text_auto=True)
         fig.update_layout(height=470, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, yaxis_title=None)
-        st.plotly_chart(fig, use_container_width=True)
+        st.plotly_chart(fig, use_container_width=True, key="chart_6")
     else:
         st.info("Нет данных для матрицы.")
 
@@ -594,7 +594,7 @@ else:
         )
         fig = bar_with_pct(jbl, "Бизнес-линия", "Количество", "")
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="chart_7")
 
     with jc2:
         st.subheader("По категориям")
@@ -605,7 +605,7 @@ else:
         )
         fig = bar_with_pct(jcat, "Количество", "Классификация", "", orientation="h", height=390)
         if fig:
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="chart_8")
 
     with jc3:
         st.subheader("Динамика открытия (JustAI)")
@@ -623,7 +623,7 @@ else:
             fig = px.bar(jopen, x="week", y="Новые баги JustAI", text="label", color_discrete_sequence=["#f85149"])
             fig.update_traces(textposition="outside")
             fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="chart_9")
 
     with jc4:
         st.subheader("Динамика закрытия (JustAI)")
@@ -643,7 +643,7 @@ else:
             fig = px.bar(jclosed, x="week", y="Закрытые баги JustAI", text="label", color_discrete_sequence=["#238636"])
             fig.update_traces(textposition="outside")
             fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="chart_10")
         else:
             st.info("Нет закрытых багов JustAI.")
 
@@ -714,7 +714,7 @@ else:
                 yaxis_title=None,
                 showlegend=False,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="chart_11")
 
         with ic2:
             st.subheader("Обращения по категориям")
@@ -743,7 +743,7 @@ else:
                 yaxis_title=None,
                 showlegend=False,
             )
-            st.plotly_chart(fig, use_container_width=True)
+            st.plotly_chart(fig, use_container_width=True, key="chart_12")
 
         # Динамика открытия и закрытия багов с обращениями
         id1, id2 = st.columns(2)
@@ -768,7 +768,7 @@ else:
                 )
                 fig.update_traces(textposition="outside")
                 fig.update_layout(height=350, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="chart_13")
             else:
                 st.info("Нет данных по дате создания.")
 
@@ -803,7 +803,7 @@ else:
                 )
                 fig.update_traces(textposition="outside")
                 fig.update_layout(height=350, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
-                st.plotly_chart(fig, use_container_width=True)
+                st.plotly_chart(fig, use_container_width=True, key="chart_14")
             else:
                 st.info("Нет закрытых багов с обращениями.")
 
