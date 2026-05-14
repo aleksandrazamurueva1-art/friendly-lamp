@@ -354,14 +354,36 @@ for tab, w_start, w_end, label in [
             ]
             if DATE_CREATED_COL in df.columns else df.iloc[0:0]
         )
-        w_closed = (
-            df[
-                (df[DATE_RESOLUTION_COL] >= w_start)
-                & (df[DATE_RESOLUTION_COL] <= w_end + timedelta(days=1))
-                & (df["Статус"].astype(str).isin(CLOSED_STATUSES))
+        # Закрытые: берём баги у которых дата релиза (из VERSION_COL) попадает в диапазон недели
+        def get_release_date(text):
+            import re as _re2
+            s = str(text).strip()
+            m = _re2.search(r"(\d{2})\.(\d{2})\.(\d{4})", s)
+            if m:
+                try:
+                    return pd.Timestamp(f"{m.group(3)}-{m.group(2)}-{m.group(1)}")
+                except Exception:
+                    pass
+            m2 = _re2.search(r"(\d{2})\.(\d{2})\.(\d{2})\b", s)
+            if m2:
+                try:
+                    year = int(m2.group(3))
+                    full_year = 2000 + year if year < 50 else 1900 + year
+                    return pd.Timestamp(f"{full_year}-{m2.group(2)}-{m2.group(1)}")
+                except Exception:
+                    pass
+            return pd.NaT
+
+        if VERSION_COL in df.columns:
+            df_with_rel = df.copy()
+            df_with_rel["_rel_date"] = df_with_rel[VERSION_COL].apply(get_release_date)
+            w_closed = df_with_rel[
+                (df_with_rel["_rel_date"] >= w_start)
+                & (df_with_rel["_rel_date"] <= w_end + timedelta(days=1))
+                & (df_with_rel["_rel_date"].notna())
             ]
-            if DATE_RESOLUTION_COL in df.columns else df.iloc[0:0]
-        )
+        else:
+            w_closed = df.iloc[0:0]
 
         def parse_appeals(frame):
             col = APPEALS_COL
@@ -582,7 +604,7 @@ justai_df = filtered[filtered["JustAI"] == True]
 if justai_df.empty:
     st.info("Нет активных багов с меткой JustAI.")
 else:
-    jc1, jc2 = st.columns(2)
+    jc1, jc2, jc5 = st.columns(3)
     jc3, jc4 = st.columns(2)
 
     with jc1:
@@ -595,6 +617,17 @@ else:
         fig = bar_with_pct(jbl, "Бизнес-линия", "Количество", "")
         if fig:
             st.plotly_chart(fig, use_container_width=True, key="chart_7")
+
+    with jc5:
+        st.subheader("По приоритетам")
+        jpri = (
+            justai_df.groupby("Приоритет").size()
+            .reset_index(name="Количество")
+            .sort_values("Количество", ascending=False)
+        )
+        fig = bar_with_pct(jpri, "Приоритет", "Количество", "", height=390)
+        if fig:
+            st.plotly_chart(fig, use_container_width=True, key="chart_justai_pri")
 
     with jc2:
         st.subheader("По категориям")
@@ -837,10 +870,21 @@ else:
         s = str(text).strip()
         if not s or s.lower() in ("nan", "none", ""):
             return None, None
-        m = _re.search(r"(\d{2})\.(\d{2})\.(\d{4})", s)
+        # Пробуем ДД.ММ.ГГГГ (4-значный год)
+        m = _re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", s)
         if m:
             try:
-                dt = pd.Timestamp(f"{m.group(3)}-{m.group(2)}-{m.group(1)}")
+                dt = pd.Timestamp(f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}")
+                return dt, s
+            except Exception:
+                pass
+        # Пробуем ДД.ММ.ГГ (2-значный год) — только если явно написано как дата
+        m2 = _re.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{2})\b", s)
+        if m2:
+            try:
+                year = int(m2.group(3))
+                full_year = 2000 + year if year < 50 else 1900 + year
+                dt = pd.Timestamp(f"{full_year}-{m2.group(2).zfill(2)}-{m2.group(1).zfill(2)}")
                 return dt, s
             except Exception:
                 pass
@@ -884,10 +928,10 @@ else:
             "Незначительный": "#b4b2a9",
         }
         bl_styles = {
-            "КБ":         ("background:#e6f1fb;color:#0c447c;"),
-            "РБ":         ("background:#eaf3de;color:#27500a;"),
-            "Общее":      ("background:#faeeda;color:#633806;"),
-            "Не указано": ("background:#f1efe8;color:#5f5e5a;"),
+            "КБ":         "background:#e6f1fb;color:#0c447c;",
+            "РБ":         "background:#eaf3de;color:#27500a;",
+            "Общее":      "background:#faeeda;color:#633806;",
+            "Не указано": "background:#f1efe8;color:#5f5e5a;",
         }
 
         cols = st.columns(min(len(releases), 3))
