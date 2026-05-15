@@ -280,11 +280,11 @@ critical_df = filtered[
 ]
 
 new_cur_week = (
-    filtered[
-        (filtered[DATE_CREATED_COL] >= cur_w_start)
-        & (filtered[DATE_CREATED_COL] <= cur_w_end)
+    df[
+        (df[DATE_CREATED_COL] >= cur_w_start)
+        & (df[DATE_CREATED_COL] <= cur_w_end)
     ]
-    if DATE_CREATED_COL in filtered.columns else filtered.iloc[0:0]
+    if DATE_CREATED_COL in df.columns else df.iloc[0:0]
 )
 
 closed_cur_week = (
