@@ -313,12 +313,11 @@ justai_count = int(filtered["JustAI"].sum())
 justai_share = (justai_count / len(filtered) * 100) if len(filtered) else 0
 
 # ── KPI ────────────────────────────────────────────────────────────────────
-k1, k2, k3, k4, k5, k6 = st.columns(6)
+k1, k2, k3, k4, k6 = st.columns(5)
 k1.metric("Открытые баги", len(filtered))
 k2.metric("Critical / Blocker", len(critical_df))
 k3.metric("Просроченные", overdue_count)
 k4.metric("JustAI (вендор)", f"{justai_count} ({justai_share:.0f}%)")
-k5.metric("Новые (тек. неделя)", len(new_cur_week))
 k6.metric("Средний возраст", f"{avg_age:.0f} дн." if pd.notna(avg_age) else "—")
 
 st.markdown(
