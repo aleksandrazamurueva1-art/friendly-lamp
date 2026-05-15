@@ -354,36 +354,14 @@ for tab, w_start, w_end, label in [
             ]
             if DATE_CREATED_COL in df.columns else df.iloc[0:0]
         )
-        # Закрытые: берём баги у которых дата релиза (из VERSION_COL) попадает в диапазон недели
-        def get_release_date(text):
-            import re as _re2
-            s = str(text).strip()
-            m = _re2.search(r"(\d{2})\.(\d{2})\.(\d{4})", s)
-            if m:
-                try:
-                    return pd.Timestamp(f"{m.group(3)}-{m.group(2)}-{m.group(1)}")
-                except Exception:
-                    pass
-            m2 = _re2.search(r"(\d{2})\.(\d{2})\.(\d{2})\b", s)
-            if m2:
-                try:
-                    year = int(m2.group(3))
-                    full_year = 2000 + year if year < 50 else 1900 + year
-                    return pd.Timestamp(f"{full_year}-{m2.group(2)}-{m2.group(1)}")
-                except Exception:
-                    pass
-            return pd.NaT
-
-        if VERSION_COL in df.columns:
-            df_with_rel = df.copy()
-            df_with_rel["_rel_date"] = df_with_rel[VERSION_COL].apply(get_release_date)
-            w_closed = df_with_rel[
-                (df_with_rel["_rel_date"] >= w_start)
-                & (df_with_rel["_rel_date"] <= w_end + timedelta(days=1))
-                & (df_with_rel["_rel_date"].notna())
+        w_closed = (
+            df[
+                (df[DATE_RESOLUTION_COL] >= w_start)
+                & (df[DATE_RESOLUTION_COL] <= w_end + timedelta(days=1))
+                & (df["Статус"].astype(str).isin(CLOSED_STATUSES))
             ]
-        else:
-            w_closed = df.iloc[0:0]
+            if DATE_RESOLUTION_COL in df.columns else df.iloc[0:0]
+        )
 
         def parse_appeals(frame):
             col = APPEALS_COL
@@ -442,59 +420,131 @@ for tab, w_start, w_end, label in [
 
         st.markdown("<div style='margin-top:1rem;'></div>", unsafe_allow_html=True)
 
-        if not w_new.empty:
-            wc1, wc2, wc3 = st.columns(3)
+        if not w_new.empty or not w_closed.empty:
 
-            def stacked_bar(frame, group_col, orient="v", height=350):
-                acol = APPEALS_COL
-                with_appeals = frame[frame[acol] > 0].groupby(group_col).size().reset_index(name="С обращениями")
-                without_appeals = frame[frame[acol] == 0].groupby(group_col).size().reset_index(name="Без обращений")
-                merged = pd.merge(without_appeals, with_appeals, on=group_col, how="outer").fillna(0)
-                merged["С обращениями"] = merged["С обращениями"].astype(int)
-                merged["Без обращений"] = merged["Без обращений"].astype(int)
-                merged["Всего"] = merged["С обращениями"] + merged["Без обращений"]
-                merged = merged.sort_values("Всего", ascending=(orient == "h"))
-                fig = px.bar(
-                    merged, x="Всего" if orient == "h" else group_col,
-                    y=group_col if orient == "h" else "Всего",
-                    orientation=orient,
-                    color_discrete_sequence=["#378ADD"],
+            def make_bar(frame, group_col, color, orient="h", height=320, key_suffix=""):
+                grp = frame.groupby(group_col).size().reset_index(name="Количество")
+                grp = grp.sort_values("Количество", ascending=(orient == "h"))
+                total = grp["Количество"].sum()
+                grp["label"] = grp["Количество"].apply(
+                    lambda v: f"{v} ({v/total*100:.0f}%)" if total else str(v)
                 )
-                if not merged[merged["С обращениями"] > 0].empty:
-                    fig2 = px.bar(
-                        merged, x="С обращениями" if orient == "h" else group_col,
-                        y=group_col if orient == "h" else "С обращениями",
-                        orientation=orient,
-                        color_discrete_sequence=["#f85149"],
-                    )
-                    fig.add_traces(fig2.data)
+                if orient == "h":
+                    fig = px.bar(grp, x="Количество", y=group_col, orientation="h",
+                                 text="label", color_discrete_sequence=[color])
+                else:
+                    fig = px.bar(grp, x=group_col, y="Количество",
+                                 text="label", color_discrete_sequence=[color])
+                fig.update_traces(textposition="outside")
                 fig.update_layout(
-                    height=height,
-                    barmode="overlay",
-                    margin=dict(l=10, r=10, t=10, b=10),
-                    xaxis_title=None, yaxis_title=None,
-                    showlegend=True,
-                    legend=dict(orientation="h", yanchor="bottom", y=-0.3, xanchor="center", x=0.5,
-                                itemsizing="constant", font=dict(size=11)),
+                    height=height, margin=dict(l=10, r=80, t=10, b=10),
+                    xaxis_title=None, yaxis_title=None, showlegend=False,
                 )
-                fig.data[0].name = "Без обращений"
-                if len(fig.data) > 1:
-                    fig.data[1].name = "С обращениями"
                 return fig
 
+            # ── Категории: открытые (синие) + закрытые (зелёные) ──
+            wc1, wc2 = st.columns(2)
             with wc1:
-                st.subheader("По категориям")
-                st.plotly_chart(stacked_bar(w_new, "Классификация", orient="h"), use_container_width=True, key=f"chart_cat_{label}")
+                st.markdown("<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>"
+                            "<div style='width:10px;height:10px;border-radius:50%;background:#f85149;'></div>"
+                            "<span style='font-size:15px;font-weight:500;'>Открытые — по категориям</span></div>",
+                            unsafe_allow_html=True)
+                if not w_new.empty:
+                    st.plotly_chart(make_bar(w_new, "Классификация", "#378ADD", orient="h",
+                                            key_suffix=f"open_cat_{label}"),
+                                    use_container_width=True, key=f"wk_open_cat_{label}")
+                else:
+                    st.info("Нет открытых багов.")
 
             with wc2:
-                st.subheader("По приоритетам")
-                st.plotly_chart(stacked_bar(w_new, "Приоритет", orient="v"), use_container_width=True, key=f"chart_pri_{label}")
+                st.markdown("<div style='display:flex;align-items:center;gap:8px;margin-bottom:8px;'>"
+                            "<div style='width:10px;height:10px;border-radius:50%;background:#238636;'></div>"
+                            "<span style='font-size:15px;font-weight:500;'>Закрытые — по категориям</span></div>",
+                            unsafe_allow_html=True)
+                if not w_closed.empty:
+                    st.plotly_chart(make_bar(w_closed, "Классификация", "#238636", orient="h",
+                                            key_suffix=f"closed_cat_{label}"),
+                                    use_container_width=True, key=f"wk_closed_cat_{label}")
+                else:
+                    st.info("Нет закрытых багов.")
 
-            with wc3:
-                st.subheader("По бизнес-линиям")
-                st.plotly_chart(stacked_bar(w_new, "Бизнес-линия", orient="v"), use_container_width=True, key=f"chart_bl_{label}")
+            # ── Приоритеты + Бизнес-линии ──
+            wp1, wp2 = st.columns(2)
+
+            with wp1:
+                st.markdown("<div style='font-size:15px;font-weight:500;margin-bottom:8px;'>По приоритетам</div>",
+                            unsafe_allow_html=True)
+                priority_order = ["Блокирующий", "Критичный", "Средний", "Важный", "Низкий", "Незначительный"]
+
+                pri_open = w_new["Приоритет"].value_counts() if not w_new.empty and "Приоритет" in w_new.columns else pd.Series(dtype=int)
+                pri_closed = w_closed["Приоритет"].value_counts() if not w_closed.empty and "Приоритет" in w_closed.columns else pd.Series(dtype=int)
+                all_pris = [p for p in priority_order if p in list(pri_open.index) + list(pri_closed.index)]
+
+                pri_colors = {"Блокирующий": "#e24b4a", "Критичный": "#ef9f27",
+                              "Средний": "#378add", "Важный": "#8957e5",
+                              "Низкий": "#888780", "Незначительный": "#b4b2a9"}
+
+                rows_open, rows_closed, rows_pri = [], [], []
+                for p in all_pris:
+                    rows_open.append(int(pri_open.get(p, 0)))
+                    rows_closed.append(int(pri_closed.get(p, 0)))
+                    rows_pri.append(p)
+
+                if rows_pri:
+                    pri_df = pd.DataFrame({
+                        "Приоритет": rows_pri * 2,
+                        "Количество": rows_open + rows_closed,
+                        "Тип": ["Открыто"] * len(rows_pri) + ["Закрыто"] * len(rows_pri),
+                    })
+                    fig = px.bar(
+                        pri_df, x="Приоритет", y="Количество", color="Тип",
+                        barmode="group", text="Количество",
+                        color_discrete_map={"Открыто": "#f85149", "Закрыто": "#238636"},
+                        category_orders={"Приоритет": rows_pri},
+                    )
+                    fig.update_traces(textposition="outside")
+                    fig.update_layout(
+                        height=320, margin=dict(l=10, r=10, t=10, b=10),
+                        xaxis_title=None, yaxis_title=None,
+                        legend=dict(orientation="h", yanchor="bottom", y=-0.35,
+                                    xanchor="center", x=0.5, font=dict(size=11)),
+                    )
+                    st.plotly_chart(fig, use_container_width=True, key=f"wk_pri_{label}")
+                else:
+                    st.info("Нет данных по приоритетам.")
+
+            with wp2:
+                st.markdown("<div style='font-size:15px;font-weight:500;margin-bottom:8px;'>По бизнес-линиям</div>",
+                            unsafe_allow_html=True)
+                bl_open = w_new["Бизнес-линия"].value_counts() if not w_new.empty and "Бизнес-линия" in w_new.columns else pd.Series(dtype=int)
+                bl_closed = w_closed["Бизнес-линия"].value_counts() if not w_closed.empty and "Бизнес-линия" in w_closed.columns else pd.Series(dtype=int)
+                all_bls = list(dict.fromkeys(list(bl_open.index) + list(bl_closed.index)))
+
+                if all_bls:
+                    bl_df = pd.DataFrame({
+                        "Бизнес-линия": all_bls * 2,
+                        "Количество": [int(bl_open.get(b, 0)) for b in all_bls] +
+                                      [int(bl_closed.get(b, 0)) for b in all_bls],
+                        "Тип": ["Открыто"] * len(all_bls) + ["Закрыто"] * len(all_bls),
+                    })
+                    fig = px.bar(
+                        bl_df, x="Бизнес-линия", y="Количество", color="Тип",
+                        barmode="group", text="Количество",
+                        color_discrete_map={"Открыто": "#f85149", "Закрыто": "#238636"},
+                    )
+                    fig.update_traces(textposition="outside")
+                    fig.update_layout(
+                        height=320, margin=dict(l=10, r=10, t=10, b=10),
+                        xaxis_title=None, yaxis_title=None,
+                        legend=dict(orientation="h", yanchor="bottom", y=-0.35,
+                                    xanchor="center", x=0.5, font=dict(size=11)),
+                    )
+                    st.plotly_chart(fig, use_container_width=True, key=f"wk_bl_{label}")
+                else:
+                    st.info("Нет данных по бизнес-линиям.")
+
         else:
-            st.info(f"Нет новых багов за {label} неделю.")
+            st.info(f"Нет данных за {label} неделю.")
 
 # ── ДИНАМИКА ───────────────────────────────────────────────────────────────
 st.markdown('<div class="section-title">📈 Динамика качества</div>', unsafe_allow_html=True)
@@ -517,7 +567,7 @@ with col1:
         fig = px.bar(new_trend, x="week", y="Новые баги", text="label")
         fig.update_traces(textposition="outside")
         fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, yaxis_title="Новые баги", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True, key="chart_1")
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Нет данных по дате создания.")
 
@@ -538,7 +588,7 @@ with col2:
         fig = px.bar(closed_trend, x="week", y="Закрытые баги", text="label", color_discrete_sequence=["#238636"])
         fig.update_traces(textposition="outside")
         fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, yaxis_title="Закрытые баги", showlegend=False)
-        st.plotly_chart(fig, use_container_width=True, key="chart_2")
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Нет данных по дате резолюции.")
 
@@ -556,7 +606,7 @@ with col3:
     )
     fig = bar_with_pct(priority, "Приоритет", "Количество", "")
     if fig:
-        st.plotly_chart(fig, use_container_width=True, key="chart_3")
+        st.plotly_chart(fig, use_container_width=True)
 
 with col4:
     st.subheader("Баги по бизнес-линиям")
@@ -567,7 +617,7 @@ with col4:
     )
     fig = bar_with_pct(business, "Бизнес-линия", "Количество", "")
     if fig:
-        st.plotly_chart(fig, use_container_width=True, key="chart_4")
+        st.plotly_chart(fig, use_container_width=True)
 
 col5, col6 = st.columns(2)
 
@@ -581,7 +631,7 @@ with col5:
     )
     fig = bar_with_pct(classification, "Количество", "Классификация", "", orientation="h", height=470)
     if fig:
-        st.plotly_chart(fig, use_container_width=True, key="chart_5")
+        st.plotly_chart(fig, use_container_width=True)
 
 with col6:
     st.subheader("Классификация × Бизнес-линия")
@@ -592,7 +642,7 @@ with col6:
     if not matrix.empty:
         fig = px.density_heatmap(matrix, x="Бизнес-линия", y="Классификация", z="Количество", text_auto=True)
         fig.update_layout(height=470, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, yaxis_title=None)
-        st.plotly_chart(fig, use_container_width=True, key="chart_6")
+        st.plotly_chart(fig, use_container_width=True)
     else:
         st.info("Нет данных для матрицы.")
 
@@ -604,7 +654,7 @@ justai_df = filtered[filtered["JustAI"] == True]
 if justai_df.empty:
     st.info("Нет активных багов с меткой JustAI.")
 else:
-    jc1, jc2, jc5 = st.columns(3)
+    jc1, jc2 = st.columns(2)
     jc3, jc4 = st.columns(2)
 
     with jc1:
@@ -616,18 +666,7 @@ else:
         )
         fig = bar_with_pct(jbl, "Бизнес-линия", "Количество", "")
         if fig:
-            st.plotly_chart(fig, use_container_width=True, key="chart_7")
-
-    with jc5:
-        st.subheader("По приоритетам")
-        jpri = (
-            justai_df.groupby("Приоритет").size()
-            .reset_index(name="Количество")
-            .sort_values("Количество", ascending=False)
-        )
-        fig = bar_with_pct(jpri, "Приоритет", "Количество", "", height=390)
-        if fig:
-            st.plotly_chart(fig, use_container_width=True, key="chart_justai_pri")
+            st.plotly_chart(fig, use_container_width=True)
 
     with jc2:
         st.subheader("По категориям")
@@ -638,7 +677,7 @@ else:
         )
         fig = bar_with_pct(jcat, "Количество", "Классификация", "", orientation="h", height=390)
         if fig:
-            st.plotly_chart(fig, use_container_width=True, key="chart_8")
+            st.plotly_chart(fig, use_container_width=True)
 
     with jc3:
         st.subheader("Динамика открытия (JustAI)")
@@ -656,7 +695,7 @@ else:
             fig = px.bar(jopen, x="week", y="Новые баги JustAI", text="label", color_discrete_sequence=["#f85149"])
             fig.update_traces(textposition="outside")
             fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True, key="chart_9")
+            st.plotly_chart(fig, use_container_width=True)
 
     with jc4:
         st.subheader("Динамика закрытия (JustAI)")
@@ -676,7 +715,7 @@ else:
             fig = px.bar(jclosed, x="week", y="Закрытые баги JustAI", text="label", color_discrete_sequence=["#238636"])
             fig.update_traces(textposition="outside")
             fig.update_layout(height=390, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
-            st.plotly_chart(fig, use_container_width=True, key="chart_10")
+            st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("Нет закрытых багов JustAI.")
 
@@ -747,7 +786,7 @@ else:
                 yaxis_title=None,
                 showlegend=False,
             )
-            st.plotly_chart(fig, use_container_width=True, key="chart_11")
+            st.plotly_chart(fig, use_container_width=True)
 
         with ic2:
             st.subheader("Обращения по категориям")
@@ -776,7 +815,7 @@ else:
                 yaxis_title=None,
                 showlegend=False,
             )
-            st.plotly_chart(fig, use_container_width=True, key="chart_12")
+            st.plotly_chart(fig, use_container_width=True)
 
         # Динамика открытия и закрытия багов с обращениями
         id1, id2 = st.columns(2)
@@ -801,7 +840,7 @@ else:
                 )
                 fig.update_traces(textposition="outside")
                 fig.update_layout(height=350, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
-                st.plotly_chart(fig, use_container_width=True, key="chart_13")
+                st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Нет данных по дате создания.")
 
@@ -836,7 +875,7 @@ else:
                 )
                 fig.update_traces(textposition="outside")
                 fig.update_layout(height=350, margin=dict(l=10, r=10, t=30, b=10), xaxis_title=None, showlegend=False)
-                st.plotly_chart(fig, use_container_width=True, key="chart_14")
+                st.plotly_chart(fig, use_container_width=True)
             else:
                 st.info("Нет закрытых багов с обращениями.")
 
@@ -870,27 +909,16 @@ else:
         s = str(text).strip()
         if not s or s.lower() in ("nan", "none", ""):
             return None, None
-        # Пробуем ДД.ММ.ГГГГ (4-значный год)
-        m = _re.search(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", s)
+        m = _re.search(r"(\d{2})\.(\d{2})\.(\d{4})", s)
         if m:
             try:
-                dt = pd.Timestamp(f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}")
-                return dt, s
-            except Exception:
-                pass
-        # Пробуем ДД.ММ.ГГ (2-значный год) — только если явно написано как дата
-        m2 = _re.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{2})\b", s)
-        if m2:
-            try:
-                year = int(m2.group(3))
-                full_year = 2000 + year if year < 50 else 1900 + year
-                dt = pd.Timestamp(f"{full_year}-{m2.group(2).zfill(2)}-{m2.group(1).zfill(2)}")
+                dt = pd.Timestamp(f"{m.group(3)}-{m.group(2)}-{m.group(1)}")
                 return dt, s
             except Exception:
                 pass
         return None, s
 
-    rel_df = df[df[VERSION_COL].notna()].copy()
+    rel_df = filtered[filtered[VERSION_COL].notna()].copy()
     rel_df["_rel_label"] = rel_df[VERSION_COL].astype(str).str.strip()
     rel_df = rel_df[rel_df["_rel_label"].str.lower() != "nan"]
 
@@ -906,10 +934,6 @@ else:
 
         # Сортируем: сначала с датой по возрастанию, потом без даты
         releases.sort(key=lambda r: (r["date"] is None, r["date"] or pd.Timestamp.max))
-
-        # Убираем релизы старше 2 недель (без даты показываем всегда)
-        two_weeks_ago = today - timedelta(weeks=2)
-        releases = [r for r in releases if r["date"] is None or r["date"] >= two_weeks_ago]
 
         # Цвета шапок карточек
         header_colors = [
@@ -928,10 +952,10 @@ else:
             "Незначительный": "#b4b2a9",
         }
         bl_styles = {
-            "КБ":         "background:#e6f1fb;color:#0c447c;",
-            "РБ":         "background:#eaf3de;color:#27500a;",
-            "Общее":      "background:#faeeda;color:#633806;",
-            "Не указано": "background:#f1efe8;color:#5f5e5a;",
+            "КБ":         ("background:#e6f1fb;color:#0c447c;"),
+            "РБ":         ("background:#eaf3de;color:#27500a;"),
+            "Общее":      ("background:#faeeda;color:#633806;"),
+            "Не указано": ("background:#f1efe8;color:#5f5e5a;"),
         }
 
         cols = st.columns(min(len(releases), 3))
