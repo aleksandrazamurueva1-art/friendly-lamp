@@ -354,14 +354,36 @@ for tab, w_start, w_end, label in [
             ]
             if DATE_CREATED_COL in df.columns else df.iloc[0:0]
         )
-        w_closed = (
-            df[
-                (df[DATE_RESOLUTION_COL] >= w_start)
-                & (df[DATE_RESOLUTION_COL] <= w_end + timedelta(days=1))
-                & (df["Статус"].astype(str).isin(CLOSED_STATUSES))
+        # Закрытые: баги у которых дата релиза из VERSION_COL попадает в диапазон недели
+        import re as _re_w
+        def _get_rel_date(text):
+            s = str(text).strip()
+            m = _re_w.search(r"(\d{1,2})\.(\d{1,2})\.(\d{4})", s)
+            if m:
+                try:
+                    return pd.Timestamp(f"{m.group(3)}-{m.group(2).zfill(2)}-{m.group(1).zfill(2)}")
+                except Exception:
+                    pass
+            m2 = _re_w.search(r"\b(\d{1,2})\.(\d{1,2})\.(\d{2})\b", s)
+            if m2:
+                try:
+                    yr = int(m2.group(3))
+                    full_yr = 2000 + yr if yr < 50 else 1900 + yr
+                    return pd.Timestamp(f"{full_yr}-{m2.group(2).zfill(2)}-{m2.group(1).zfill(2)}")
+                except Exception:
+                    pass
+            return pd.NaT
+
+        if VERSION_COL in df.columns:
+            _df_rel = df.copy()
+            _df_rel["_rel_date"] = _df_rel[VERSION_COL].apply(_get_rel_date)
+            w_closed = _df_rel[
+                (_df_rel["_rel_date"] >= w_start)
+                & (_df_rel["_rel_date"] <= w_end + timedelta(days=1))
+                & (_df_rel["_rel_date"].notna())
             ]
-            if DATE_RESOLUTION_COL in df.columns else df.iloc[0:0]
-        )
+        else:
+            w_closed = df.iloc[0:0]
 
         def parse_appeals(frame):
             col = APPEALS_COL
@@ -920,7 +942,7 @@ else:
                 pass
         return None, s
 
-    rel_df = filtered[filtered[VERSION_COL].notna()].copy()
+    rel_df = df[df[VERSION_COL].notna()].copy()
     rel_df["_rel_label"] = rel_df[VERSION_COL].astype(str).str.strip()
     rel_df = rel_df[rel_df["_rel_label"].str.lower() != "nan"]
 
