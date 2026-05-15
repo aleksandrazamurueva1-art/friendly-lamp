@@ -423,7 +423,9 @@ for tab, w_start, w_end, label in [
         if not w_new.empty or not w_closed.empty:
 
             def make_bar(frame, group_col, color, orient="h", height=320, key_suffix=""):
-                grp = frame.groupby(group_col).size().reset_index(name="Количество")
+                f = frame.copy()
+                f[group_col] = f[group_col].fillna("Не указано").astype(str).replace("", "Не указано")
+                grp = f.groupby(group_col).size().reset_index(name="Количество")
                 grp = grp.sort_values("Количество", ascending=(orient == "h"))
                 total = grp["Количество"].sum()
                 grp["label"] = grp["Количество"].apply(
@@ -476,8 +478,8 @@ for tab, w_start, w_end, label in [
                             unsafe_allow_html=True)
                 priority_order = ["Блокирующий", "Критичный", "Средний", "Важный", "Низкий", "Незначительный"]
 
-                pri_open = w_new["Приоритет"].value_counts() if not w_new.empty and "Приоритет" in w_new.columns else pd.Series(dtype=int)
-                pri_closed = w_closed["Приоритет"].value_counts() if not w_closed.empty and "Приоритет" in w_closed.columns else pd.Series(dtype=int)
+                pri_open = w_new["Приоритет"].fillna("Не указано").value_counts() if not w_new.empty and "Приоритет" in w_new.columns else pd.Series(dtype=int)
+                pri_closed = w_closed["Приоритет"].fillna("Не указано").value_counts() if not w_closed.empty and "Приоритет" in w_closed.columns else pd.Series(dtype=int)
                 all_pris = [p for p in priority_order if p in list(pri_open.index) + list(pri_closed.index)]
 
                 pri_colors = {"Блокирующий": "#e24b4a", "Критичный": "#ef9f27",
@@ -516,8 +518,8 @@ for tab, w_start, w_end, label in [
             with wp2:
                 st.markdown("<div style='font-size:15px;font-weight:500;margin-bottom:8px;'>По бизнес-линиям</div>",
                             unsafe_allow_html=True)
-                bl_open = w_new["Бизнес-линия"].value_counts() if not w_new.empty and "Бизнес-линия" in w_new.columns else pd.Series(dtype=int)
-                bl_closed = w_closed["Бизнес-линия"].value_counts() if not w_closed.empty and "Бизнес-линия" in w_closed.columns else pd.Series(dtype=int)
+                bl_open = w_new["Бизнес-линия"].fillna("Не указано").value_counts() if not w_new.empty and "Бизнес-линия" in w_new.columns else pd.Series(dtype=int)
+                bl_closed = w_closed["Бизнес-линия"].fillna("Не указано").value_counts() if not w_closed.empty and "Бизнес-линия" in w_closed.columns else pd.Series(dtype=int)
                 all_bls = list(dict.fromkeys(list(bl_open.index) + list(bl_closed.index)))
 
                 if all_bls:
